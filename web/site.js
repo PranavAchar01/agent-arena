@@ -181,8 +181,98 @@
     evaluated: (e) => (e.n ? [`eval> ${e.success}/${e.n} unseen layouts · policy.pt ready to deploy`, "t-sys"] : [`eval> ${e.reason}`, "t-no"]),
   };
 
+  // ---------- a chess box (a recorded run of the chess agent) ----------
+  const CFORMAT = {
+    plan: (e) => [`agent> ${e.white} vs ${e.black}, ${e.year} ${e.game ? "game " + e.game : ""}`, "t-sys"],
+    vm_create: (e) => [`vultr> VM ${e.instance.slice(0, 8)} · ${e.plan} · ${e.region}`, "t-sys"],
+    sandbox_start: (e) => [`$ docker run --rm --read-only --cap-drop ALL ${e.container}`, "t-sys"],
+    search: (e) => [`scrapling> ${e.source}: "${short(e.query, 36)}" → ${e.hits}`, "t-info"],
+    picked: (e) => [`agent> picked ${e.n} of ${e.of} articles`, "t-sys"],
+    page: (e) => [`scrapling> ${short(e.title || e.url, 40)} → ${e.move_lists} move lists`, "t-info"],
+    validate: (e) => [`python-chess> ${e.ok ? `${e.plies} legal moves ✓` : e.reason}`, e.ok ? "t-ok" : "t-no"],
+    game: (e) => [`game> ${e.plies} moves found and checked`, "t-ok"],
+    replay: (e) => [`mujoco> ${e.transfers} pick-and-places, each rehearsed in physics ✓`, "t-ok"],
+    vm_destroyed: (e) => [`vultr> VM deleted after ${e.seconds}s`, "t-sys"],
+  };
+  async function addChessBox(rid) {
+    const d = await fetch(`/api/runs/${rid}`).then((r) => r.json());
+    const text = d.events[0]?.text || "";
+    const box = addBox(rid, text);
+    box.kind = "chess";
+    box.prompt = text;
+    box.mode = "tune";
+    for (const e of d.events) {
+      box.events.push(e);
+      const f = CFORMAT[e.type];
+      const out = f && f(e);
+      if (out) box.line(...out);
+    }
+    const rep = d.events.find((e) => e.type === "replay");
+    const vm = d.events.find((e) => e.type === "vm_create");
+    box.replay = rep;
+    $(".term-title", box.root).textContent = "chess agent · Scrapling · python-chess · MuJoCo";
+    if (vm) $(".sbx", box.root).textContent = `vultr ${vm.instance.slice(0, 8)}`;
+    $$(".phases i", box.root).forEach((i) => { i.className = "done"; });
+    $(".nums", box.root).innerHTML = `<span>moves <b>${rep.plies}</b></span><span>pick-and-places <b>${rep.transfers}</b></span><span>worst <b>${rep.max_err_mm} mm</b></span>`;
+    $(".deploy-rate", box.root).textContent = `${rep.plies} moves, both sides`;
+    box.setStatus("Ready to deploy", "ok");
+    box.ended();
+    box.root.classList.add("is-ready");
+    const v = $("video", box.root);
+    v.src = rep.video;
+    $(".screen", box.root).classList.add("is-video");
+    v.play().catch(() => {});
+    return box;
+  }
+
   // ---------- technical overview ----------
+  const promptCard = (text) => `<section class="card span prompt-card"><h3>Prompt</h3><p class="prompt-text">“${esc(text)}”</p></section>`;
+  function openChessSheet(box) {
+    const r = box.replay;
+    $("#sheet-kicker").textContent = `ROBOT ${String(box.n).padStart(2, "0")} · SO-101 · simulated in MuJoCo`;
+    $("#sheet-title").textContent = "Deep Blue vs. Kasparov, 1997, Game 6";
+    $("#sheet-body").innerHTML = `
+      ${promptCard(box.prompt)}
+      <section class="card span">
+        <h3>The robot plays both sides</h3>
+        <video class="hero-video" id="chess-video" src="${esc(r.video)}" autoplay muted loop playsinline controls></video>
+        <ol class="c-moves" id="sheet-moves">${r.moves.map((m, i) => `<li>${i % 2 === 0 ? `<b>${i / 2 + 1}.</b>` : ""}${esc(m.san)}</li>`).join("")}</ol>
+        <p class="note">MuJoCo physics (Google DeepMind) with the official SO-101 model and its STS3215 servo gains. ${Math.round(r.sim_s)} s of robot time, shown at ${r.speed.toFixed(1)}×.</p>
+      </section>
+      <section class="card">
+        <h3>At a glance</h3>
+        <dl class="kv">
+          <div><dd>${r.plies}</dd><dt>moves, both colours</dt></div>
+          <div><dd>${r.captures}</dd><dt>captures, pieces to the tray</dt></div>
+          <div><dd>${r.transfers}</dd><dt>pick-and-places, each rehearsed first</dt></div>
+          <div><dd>${r.max_err_mm} mm</dd><dt>worst placement off a square's centre</dt></div>
+        </dl>
+      </section>
+      <section class="card">
+        <h3>How it ran</h3>
+        <ol class="steps">
+          <li><b>Plan</b><span style="grid-column:2/-1">the agent turned the prompt into a search</span></li>
+          <li><b>Scrape</b><span style="grid-column:2/-1">Scrapling on a throwaway Vultr VM, no secrets inside</span></li>
+          <li><b>Check</b><span style="grid-column:2/-1">python-chess re-read every move: ${r.plies} legal</span></li>
+          <li><b>Rehearse</b><span style="grid-column:2/-1">every grasp simulated and checked before it is played</span></li>
+        </ol>
+      </section>
+      <section class="card span">
+        <h3>Full log</h3>
+        <div class="log">${box.log.map(([, text, cls]) => `<div class="${cls}">${esc(text)}</div>`).join("")}</div>
+      </section>`;
+    const v = $("#chess-video");
+    v.addEventListener("timeupdate", () => {
+      let k = -1;
+      r.moves.forEach((m, i) => { if (v.currentTime >= m.start_s) k = i; });
+      $$("#sheet-moves li").forEach((li, i) => { li.className = i < k ? "done" : i === k ? "on" : ""; });
+    });
+    $("#sheet").hidden = false;
+    document.body.classList.add("is-locked");
+  }
+
   async function openSheet(box) {
+    if (box.kind === "chess") return openChessSheet(box);
     const sheet = $("#sheet");
     const d = await fetch(`/api/runs/${box.id}`).then((r) => r.json()).catch(() => ({}));
     const s = d.summary || {};
@@ -207,6 +297,7 @@
       ["Test", `${pol.eval_n || 20} fixed layouts the policy never saw`, t.evaluate],
     ];
     $("#sheet-body").innerHTML = `
+      ${promptCard(`I want to train a robot to ${box.task}`)}
       <section class="card">
         <h3>Deployment</h3>
         ${ready ? `<video class="hero-video" src="/runs/${box.id}/showcase.mp4" autoplay muted loop playsinline></video>` : ""}
@@ -326,5 +417,14 @@
     })();
   } else if (qs.get("run")) {
     qs.get("run").split(",").forEach((id) => replay(id, null, speed, maxGap));
+  } else if (qs.get("preload") !== "0") {
+    // finished robots from earlier runs; a new prompt appears above them. ?preload=run,chess:run to choose
+    (async () => {
+      const list = (qs.get("preload") || "chess:chess-140740-0d00,box-place").split(",");
+      for (const item of list) {
+        if (item.startsWith("chess:")) await addChessBox(item.slice(6)).catch(() => {});
+        else await replay(item, null, Infinity, 0).catch(() => {});
+      }
+    })();
   }
 })();
