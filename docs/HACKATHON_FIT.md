@@ -12,17 +12,19 @@ not published on the page.
 |---|---|---|
 | Agents running real operations | A scraping agent that plans searches, picks sources, fetches and decodes untrusted media, then hands verified data to a tuning job | Strong |
 | **Contain** what agents do | Every box gets a throwaway sandbox: read-only root, no capabilities, uid 10001, 1 CPU / 512 MB / 128 pids, hard kill, `--rm`, zero secrets inside. 70 planted hostile pages across 14 runs, 0 reached the app. The model only ever sees titles as data and answers with line numbers | **Strongest point** |
-| **Coordinate** many agents | New UI: every prompt spawns its own robot box with its own sandbox and its own tuning job, all visible at once | Good in the UI; the backend still runs boxes one after another on this Mac |
-| Vultr VM backends | `SandboxRunner` interface; local Docker backend works; Vultr backend is a documented stub (create instance with cloud-init, stream events, delete in `finally`) | **Gap until built on the day** |
+| **Coordinate** many agents | Every prompt spawns its own robot box with its own sandbox and tuning job; on Vultr, BOX_WORKERS boxes (default 3) run at once, each on its own VM | Good; parallel only on the Vultr backend |
+| Vultr VM backends | `VultrRunner` built and unit-tested against a fake Vultr API: one VM per box, per-box SSH key and firewall (22/tcp from the app only), same hardened container over SSH, VM deleted on end/crash/kill. Not yet run against a real account | **Built; needs one live smoke test with the key** |
 | Vultr serverless inference | All LLM/VLM calls go through one OpenAI-compatible client (`LLM_BASE_URL`, `VLM_MODEL`); today it points at a local Claude CLI shim | Config only, but which vision model Vultr offers is unverified |
 | Compute agents run on (no GPUs at this event) | Whole pipeline is CPU: MediaPipe, MuJoCo, a 166k-parameter policy trained in about 20 s | Strong |
-| "In production" | Missing: per-box kill switch, live resource meters, retries, persistent audit log, auth | Gap |
+| "In production" | Per-box kill switch (button + API), hash-chained audit log with download and verify, VM cost per box. Still missing: live resource meters, retries, auth | Mostly closed |
 
 **Overall: a good fit if it is pitched as agent infrastructure, a weak one if it is pitched as a robotics demo.**
 The judges are an infrastructure audience. The robot is the workload that makes containment visible; the product is
 the fabric that lets many untrusted, web-touching agents run side by side and hand back only verified output.
 
 ## What to build on the day to close the gaps (in order)
+
+Status 09-26: 1 and 3 are built (see README, Agent infrastructure). 2 needs a Vultr inference key and model id. 4 not started.
 
 1. **One Vultr instance per box.** `VultrRunner`: create a small CPU instance from a snapshot with Docker and the
    scraper image, run the same job, stream events back, destroy it in `finally`. Show the instance ID in the box
@@ -42,7 +44,7 @@ tested before it is marked ready to deploy. We planted 70 hostile pages; none go
 
 ## What not to say
 
-- That it runs on Vultr today (it runs on local Docker until step 1 is built).
-- That boxes train in parallel today (they queue on this Mac).
+- That it runs on Vultr before `scripts/vultr.py smoke` has passed with the real key.
+- That boxes train in parallel on local Docker (they queue; parallel is the Vultr backend only).
 - That the robot is deployed on hardware (simulation only; policies read state, not pixels).
 - That a VLM was fine-tuned (it was not; the verifier is used as is).

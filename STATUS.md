@@ -32,3 +32,11 @@ Public repo: github.com/PranavAchar01/agent-arena. Resume from here after an app
 
 ## Phase 1 DONE. Waiting on Pranav's confirmation before Phase 2 (filming). Do not film before his yes.
 Demo replay URLs: http://localhost:8800/?run=place-seeded&speed=8 (best automatic run)
+
+## 09-26 at the event
+- [x] VultrRunner: one VM per box, per-box SSH key + firewall, same container over SSH, cleanup on end/crash/kill
+- [x] Kill switch (button + POST /api/runs/{id}/kill), hash-chained audit log (download + verify), model_call events
+- [x] Parallel boxes on Vultr (BOX_WORKERS), scripts/vultr.py check|smoke|sweep, tests/test_runner.py (5 pass)
+- [x] Verified locally: live run killed mid-scrape -> container gone, run stops, chain intact
+- [ ] Needs Pranav: Vultr credits redeemed + VULTR_API_KEY exported, then `scripts/vultr.py smoke`
+- [ ] Vultr Serverless Inference key + model id (vision model availability unknown)

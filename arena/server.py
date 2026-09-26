@@ -4,6 +4,9 @@
   GET  /api/runs            recorded and live runs
   GET  /api/runs/{id}       every event so far + run.json when finished
   WS   /api/runs/{id}/ws    events as they happen (replays history first)
+  POST /api/runs/{id}/kill  kill switch: destroys the box's sandbox (its Vultr VM on that backend) and stops the run
+  GET  /api/runs/{id}/audit hash-chained JSONL audit log (every fetch, block, model call, VM create/destroy)
+  GET  /api/runs/{id}/audit/verify   recomputes the chain
   GET  /api/config          which LLM / VLM endpoint and sandbox backend are configured
   GET  /runs/{id}/...       stills, clips, policy video
 
@@ -13,7 +16,9 @@ Run: .venv/bin/python -m uvicorn arena.server:app --port 8800
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import os
 import re
 import queue
 import threading
@@ -22,13 +27,13 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import llm
 from .pipeline import run as run_pipeline
-from .sandbox.runner import get_runner
+from .sandbox.runner import BoxKilled, box, check_killed
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
@@ -38,6 +43,8 @@ RUN_ID = re.compile(r"^[a-z0-9-]{3,40}$")
 app = FastAPI(title="agent-arena-proto")
 _lock = threading.Lock()
 _live: dict[str, list[dict]] = {}
+_boxes: dict = {}
+GENESIS = "0" * 64
 
 
 class NewRun(BaseModel):
@@ -61,7 +68,8 @@ def _events(rid: str) -> list[dict]:
 def config():
     return {
         "models": llm.describe(),
-        "sandbox": get_runner().name,
+        "sandbox": os.environ.get("SANDBOX_BACKEND", "docker"),
+        "workers": WORKERS,
         "queued": _queue.qsize(),
     }
 
@@ -123,37 +131,115 @@ def _hocap(family: str | None) -> dict:
     }
 
 
+def _chain(prev: str, e: dict) -> str:
+    return hashlib.sha256(
+        (prev + json.dumps(e, sort_keys=True, default=str)).encode()
+    ).hexdigest()
+
+
 def _worker():
     while True:
         rid, req, d = _queue.get()
         log = open(d / "events.jsonl", "a")
+        head = [_live[rid][0]["h"]]
 
         def emit(e):
-            e = {**e, "at": round(time.time(), 2)}
+            e = {k: v for k, v in e.items() if k != "h"}
+            e["at"] = round(time.time(), 2)
+            e["h"] = head[0] = _chain(head[0], e)
             _live[rid].append(e)
             log.write(json.dumps(e, default=str) + "\n")
             log.flush()
+            if e["type"] not in (
+                "killed",
+                "error",
+                "vm_destroyed",
+                "sandbox_destroyed",
+                "warn",
+            ):
+                check_killed()  # a killed box stops at its next step, wherever it is
 
         try:
-            fam = req.family
-            if (
-                fam is None
-            ):  # let the planner choose, then fetch from the matching people
-                from .agent import plan as plan_search
+            with box(rid) as b:
+                _boxes[rid] = b
+                llm.audit.set(emit)
+                fam = req.family
+                if (
+                    fam is None
+                ):  # let the planner choose, then fetch from the matching people
+                    from .agent import plan as plan_search
 
-                p = plan_search(req.text)
-                fam = p["family"]
-            else:
-                p = None
-            run_pipeline(req.text, d, emit, family=fam, plan=p, dataset=_hocap(fam))
+                    p = plan_search(req.text)
+                    fam = p["family"]
+                else:
+                    p = None
+                run_pipeline(req.text, d, emit, family=fam, plan=p, dataset=_hocap(fam))
+        except BoxKilled as ex:
+            emit({"type": "killed", "message": str(ex)})
         except Exception as ex:  # noqa: BLE001 - surface any failure to the page instead of dying silently
             emit({"type": "error", "message": f"{type(ex).__name__}: {str(ex)[:200]}"})
         finally:
             log.close()
+            _boxes.pop(rid, None)
             _live.pop(rid, None)
 
 
-threading.Thread(target=_worker, daemon=True).start()
+# local Docker shares this Mac's CPU, so one box at a time; on Vultr every box has its own VM
+WORKERS = int(
+    os.environ.get(
+        "BOX_WORKERS", "3" if os.environ.get("SANDBOX_BACKEND") == "vultr" else "1"
+    )
+)
+for _ in range(WORKERS):
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+@app.post("/api/runs/{rid}/kill")
+def kill(rid: str):
+    if not RUN_ID.match(rid):
+        raise HTTPException(400, "bad id")
+    b = _boxes.get(rid)
+    if b is None:
+        raise HTTPException(409, "box is not running")
+    threading.Thread(
+        target=b.kill, daemon=True
+    ).start()  # VM deletion can take a few seconds
+    return {"id": rid, "killing": True}
+
+
+@app.get("/api/runs/{rid}/audit")
+def audit(rid: str):
+    f = RUNS / rid / "events.jsonl"
+    if not RUN_ID.match(rid) or not f.is_file():
+        raise HTTPException(404)
+    return PlainTextResponse(
+        f.read_text(),
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": f'attachment; filename="{rid}-audit.jsonl"'},
+    )
+
+
+@app.get("/api/runs/{rid}/audit/verify")
+def audit_verify(rid: str):
+    f = RUNS / rid / "events.jsonl"
+    if not RUN_ID.match(rid) or not f.is_file():
+        raise HTTPException(404)
+    prev, n = GENESIS, 0
+    for line in f.read_text().splitlines():
+        if not line.strip():
+            continue
+        e = json.loads(line)
+        if "h" not in e:
+            return {
+                "ok": None,
+                "reason": "recorded before the audit chain existed",
+                "events": n,
+            }
+        h = e.pop("h")
+        if _chain(prev, e) != h:
+            return {"ok": False, "broken_at": n, "events": n}
+        prev, n = h, n + 1
+    return {"ok": True, "events": n, "head": prev}
 
 
 @app.post("/api/runs")
@@ -161,15 +247,15 @@ def start(req: NewRun):
     rid = f"live-{time.strftime('%H%M%S')}-{uuid.uuid4().hex[:4]}"
     d = RUNS / rid
     d.mkdir(parents=True)
-    _live[rid] = [
-        {
-            "type": "queued",
-            "position": _queue.qsize(),
-            "robot": req.robot,
-            "text": req.text,
-            "at": round(time.time(), 2),
-        }
-    ]
+    first = {
+        "type": "queued",
+        "position": _queue.qsize(),
+        "robot": req.robot,
+        "text": req.text,
+        "at": round(time.time(), 2),
+    }
+    first["h"] = _chain(GENESIS, first)
+    _live[rid] = [first]
     (d / "events.jsonl").write_text(json.dumps(_live[rid][0]) + "\n")
     _queue.put((rid, req, d))
     return {"id": rid, "queued": _queue.qsize()}

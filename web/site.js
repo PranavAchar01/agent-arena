@@ -15,7 +15,7 @@
 
   const PHASES = ["Scrape", "Verify", "Retarget", "Tune", "Test"];
   const PHASE_OF = { queued: -1, plan: 0, sandbox_start: 0, sandbox: 0, search: 0, page: 0, download: 0, clip: 0, blocked: 0, warn: 0,
-    sandbox_destroyed: 0, picked: 0, done: 0, verifying: 1, verdict: 1, moves: 2, motion: 2, episodes: 2, dataset: 2,
+    sandbox_destroyed: 0, vm_create: 0, vm_booting: 0, vm_ready: 0, picked: 0, done: 0, verifying: 1, verdict: 1, moves: 2, motion: 2, episodes: 2, dataset: 2,
     train: 3, trained: 3, rollout: 4, evaluated: 4 };
   const boxes = [];
   let robot = "so101";
@@ -58,7 +58,8 @@
       <header class="box-head">
         <div><div class="box-id">ROBOT ${String(n).padStart(2, "0")} · SO-101 · <span class="sbx">queued</span></div>
         <div class="box-task">${esc(task)}</div></div>
-        <span class="status wait"><i></i><span>Queued</span></span>
+        <div class="head-r"><span class="status wait"><i></i><span>Queued</span></span>
+        <button type="button" class="kill" title="Destroy this robot's sandbox now">Kill</button></div>
       </header>
       <div class="screen">
         <div class="term"><div class="term-bar"><i></i><i></i><i></i><span class="term-title">waiting for a sandbox</span></div>
@@ -75,6 +76,7 @@
     const box = new Box(id, task, n, root);
     boxes.push(box);
     root.addEventListener("click", () => openSheet(box));
+    $(".kill", root).addEventListener("click", (ev) => { ev.stopPropagation(); killBox(box); });
     $("#fleet-count").textContent = `${boxes.length} robot${boxes.length > 1 ? "s" : ""} · one sandbox each`;
     return box;
   }
@@ -114,10 +116,13 @@
       if (f) { const out = f(e, this); if (out) (Array.isArray(out[0]) ? out : [out]).forEach(([t, c]) => this.line(t, c)); }
       if (e.type === "blocked") mark("blocked");
       if (e.type === "verdict" && e.accept) mark("verified");
-      if (e.type === "error") { this.setStatus("Failed", "no"); this.line(`error: ${e.message}`, "t-no"); }
+      if (e.type === "error") { this.setStatus("Failed", "no"); this.line(`error: ${e.message}`, "t-no"); this.ended(); }
+      if (e.type === "killed") { this.setStatus("Killed", "no"); this.ended(); }
       if (e.type === "done" && e.timings_s) this.finish();
     }
+    ended() { this.root.classList.add("is-ended"); }
     finish() {
+      this.ended();
       $$(".phases i", this.root).forEach((i) => { i.className = "done"; });
       const ev = this.events.find((e) => e.type === "evaluated");
       if (!ev || !ev.n) { this.setStatus("Not enough data", "no"); return; }
@@ -140,9 +145,18 @@
   const FORMAT = {
     queued: (e) => [`queued · position ${e.position + 1}`, "t-dim"],
     plan: (e, b) => { b.family = e.family; return [[`agent> task family: ${e.family} · "${e.summary}"`, "t-sys"]]; },
+    vm_create: (e, b) => { $(".sbx", b.root).textContent = `vultr ${e.instance.slice(0, 8)}`;
+      $(".term-title", b.root).textContent = `vultr ${e.plan} · ${e.region} · booting`;
+      return [[`vultr> create instance ${e.instance.slice(0, 8)} · ${e.plan} · ${e.region}${e.hourly_usd ? ` · $${e.hourly_usd}/h` : ""}`, "t-sys"], [`vultr> firewall: ${e.firewall} · fresh SSH key · API key stays in the app`, "t-dim"]]; },
+    vm_booting: (e) => [`vultr> ${e.ip} up · ${e.step}`, "t-dim"],
+    vm_ready: (e) => [`vultr> ready in ${e.seconds}s · docker ${e.docker}`, "t-ok"],
+    vm_destroyed: (e) => [`vultr> instance ${e.instance.slice(0, 8)} deleted after ${e.seconds}s${e.cost_usd != null ? ` · ≈$${e.cost_usd}` : ""}`, "t-sys"],
+    model_call: (e) => [`${e.kind.toLowerCase()}> ${e.model} @ ${e.endpoint} · ${e.ms} ms`, "t-dim"],
+    killed: () => ["■ KILLED by operator · sandbox destroyed", "t-no"],
     sandbox_start: (e, b) => {
-      $(".sbx", b.root).textContent = "sandbox " + e.container.replace("arena-sbx-", "").slice(0, 6);
-      $(".term-title", b.root).textContent = `${e.container} · scraper · ${e.caps.cpus} CPU · ${e.caps.memory} · ${e.caps.seconds}s kill`;
+      const where = e.host && e.host !== "local" ? e.host : "local docker";
+      if (!e.host || e.host === "local") $(".sbx", b.root).textContent = "sandbox " + e.container.replace("arena-sbx-", "").slice(0, 6);
+      $(".term-title", b.root).textContent = `${e.container} · ${where} · ${e.caps.cpus} CPU · ${e.caps.memory} · ${e.caps.seconds}s kill`;
       return [[`$ docker run --rm --read-only --cap-drop ALL --pids-limit ${e.caps.pids} arena-scraper`, "t-sys"]];
     },
     sandbox: (e) => [`  uid ${e.user} · ${e.env_secrets} secrets in env · writable ${e.writable.join(" ")}`, "t-dim"],
@@ -181,6 +195,8 @@
     const moves = ev("motion");
     const t = s.timings_s || {};
     const rolls = (pol.eval || box.rollouts);
+    const vm = ev("vm_create")[0];
+    const gone = ev("vm_destroyed")[0];
     const steps = [
       ["Plan", "the agent picks the task family and the people to learn from", t.plan],
       ["Sandbox", "throwaway containers fetch and re-encode openly licensed video; no secrets inside", t.scrape],
@@ -223,12 +239,32 @@
         <div class="dots">${rolls.map((ok) => `<i class="${ok ? "" : "no"}"></i>`).join("")}</div>
       </section>
       <section class="card span">
+        <h3>Containment and audit</h3>
+        <dl class="kv">
+          <div><dd>${esc(vm ? vm.instance.slice(0, 8) : "local")}</dd><dt>${vm ? `Vultr VM · ${esc(vm.plan)} · ${esc(vm.region)}` : "Docker on this machine"}</dt></div>
+          <div><dd>${ev("sandbox_start").length}</dd><dt>throwaway containers, all destroyed</dt></div>
+          <div><dd>${ev("model_call").length}</dd><dt>model calls logged (sizes and timing, no prompts)</dt></div>
+          <div><dd>${gone ? (gone.cost_usd != null ? "$" + gone.cost_usd : "gone") : vm ? "live" : "–"}</dd><dt>${gone ? `VM deleted after ${gone.seconds}s` : vm ? "VM still running" : "no VM"}</dt></div>
+        </dl>
+        <p class="note">${vm ? esc(vm.firewall) + ". " : ""}Every event is hash-chained; <a href="/api/runs/${box.id}/audit">download the audit log</a> · chain check: <span id="audit-ok">checking…</span></p>
+        ${box.root.classList.contains("is-ended") ? "" : `<button type="button" class="kill big" id="sheet-kill">Kill this robot's sandbox</button>`}
+      </section>
+      <section class="card span">
         <h3>Full log</h3>
         <div class="log">${box.log.map(([, text, cls]) => `<div class="${cls}">${esc(text)}</div>`).join("")}</div>
       </section>`;
     sheet.hidden = false;
     mark("sheet");
+    $("#sheet-kill")?.addEventListener("click", () => killBox(box));
+    fetch(`/api/runs/${box.id}/audit/verify`).then((r) => r.json()).then((v) => {
+      $("#audit-ok").textContent = v.ok ? `intact · ${v.events} events` : v.ok === false ? `BROKEN at event ${v.broken_at}` : "not chained (older run)";
+    }).catch(() => { $("#audit-ok").textContent = "unavailable in replay"; });
     document.body.classList.add("is-locked");
+  }
+  async function killBox(box) {
+    if (box.root.classList.contains("is-ended")) return;
+    box.setStatus("Killing", "no");
+    await fetch(`/api/runs/${box.id}/kill`, { method: "POST" }).catch(() => {});
   }
   const closeSheet = () => { $("#sheet").hidden = true; document.body.classList.remove("is-locked"); };
   $("#sheet-close").addEventListener("click", closeSheet);

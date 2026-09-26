@@ -11,14 +11,21 @@ Inference key and model id. Model output is treated as untrusted: callers parse 
 from __future__ import annotations
 
 import base64
+import contextvars
 import json
 import os
 import re
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 from openai import OpenAI
 
 SHIM = "http://127.0.0.1:8790/v1"
+# set by the server per box: every model call lands in that box's audit log (sizes and timing, never the prompt)
+audit: contextvars.ContextVar[Callable[[dict], None] | None] = contextvars.ContextVar(
+    "audit", default=None
+)
 
 
 def _cfg(kind: str):
@@ -55,13 +62,29 @@ def chat(
         content.append(
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
         )
+    t0 = time.time()
     r = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": content}],
         max_tokens=max_tokens,
         temperature=0,
     )
-    return r.choices[0].message.content or ""
+    out = r.choices[0].message.content or ""
+    log = audit.get()
+    if log is not None:
+        log(
+            {
+                "type": "model_call",
+                "kind": "VLM" if images else kind,
+                "model": model,
+                "endpoint": base.split("//")[-1].split("/")[0],
+                "prompt_chars": len(prompt),
+                "images": len(images or []),
+                "reply_chars": len(out),
+                "ms": round((time.time() - t0) * 1000),
+            }
+        )
+    return out
 
 
 def parse_json(text: str):
