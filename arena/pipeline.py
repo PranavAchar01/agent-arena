@@ -105,6 +105,27 @@ def write_mp4(frames, path: Path, fps=25):
     p.wait()
 
 
+def showcase(task: str, run_dir: Path, res: list[bool]):
+    from .policy import Runner, eval_layouts
+
+    if not any(res):
+        return
+    i = res.index(True)
+    sc = Scene.make(task)
+    r = mujoco.Renderer(sc.model, 540, 960)
+    cam = mujoco.MjvCamera()
+    cam.lookat[:] = [0.2, 0.0, 0.04]
+    cam.distance, cam.azimuth, cam.elevation = 0.62, 215, -28
+
+    def rend(s):
+        r.update_scene(s.data, camera=cam)
+        return r.render()
+
+    b, t, y = eval_layouts(task)[i]
+    _, frames = Runner(run_dir / "policy.pt").rollout(sc, b, t, y, render=rend)
+    write_mp4(frames, run_dir / "showcase.mp4")
+
+
 def run(
     text: str,
     run_dir: Path,
@@ -304,13 +325,12 @@ def run(
         with T("train"):
             info = train(episodes, run_dir / "policy.pt", log=emit)
         emit({"type": "trained", **info})
-        rend = renderer(sc.model)
         with T("evaluate"):
-            res, vids = evaluate(
-                task, run_dir / "policy.pt", render_first=4, render=rend
-            )
-        frames = [f for _, fr in vids for f in fr]
-        write_mp4(frames, run_dir / "policy.mp4")
+            res, _ = evaluate(task, run_dir / "policy.pt",
+                              on_result=lambda i, ok: emit({"type": "rollout", "i": i, "ok": ok, "n": N_EVAL}))
+        # showcase: the first unseen layout the policy solves, rendered for the deployment card
+        with T("render"):
+            showcase(task, run_dir, res)
         summary["policy"] = {
             **info,
             "eval_success": int(sum(res)),
@@ -323,7 +343,7 @@ def run(
                 "type": "evaluated",
                 "success": int(sum(res)),
                 "n": N_EVAL,
-                "video": "policy.mp4",
+                "video": "showcase.mp4",
             }
         )
     else:

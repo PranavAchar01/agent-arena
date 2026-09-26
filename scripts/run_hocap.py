@@ -6,7 +6,7 @@ Y = Path("runs/hocap/hocap_recordings.yaml").read_text()
 url = lambda k: re.search(rf"^{k}: *(\S+)", Y, re.M).group(1)
 TEXT = {"place": "put the block in the bowl", "stack": "stack the block on another block", "tower": "stack one more block to make a tower"}
 task, subjects, per = sys.argv[1], sys.argv[2].split(","), int(sys.argv[3])
-d = Path("runs") / f"hocap-{task}"; d.mkdir(parents=True, exist_ok=True)
+d = Path("runs") / (sys.argv[5] if len(sys.argv) > 5 else f"hocap-{task}"); d.mkdir(parents=True, exist_ok=True)
 log = open(d / "events.jsonl", "w")
 def emit(e):
     e = {**e, "at": round(time.time(), 2)}

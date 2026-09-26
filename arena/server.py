@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import queue
 import threading
 import time
 import uuid
@@ -41,7 +42,10 @@ _live: dict[str, list[dict]] = {}
 
 class NewRun(BaseModel):
     text: str = Field(min_length=8, max_length=200)
-    family: str | None = Field(default=None, pattern="^(push|place|stack|unjar|tower)$")
+    family: str | None = Field(default=None, pattern="^(place|stack|tower)$")
+    robot: str = Field(
+        default="so101", pattern="^(so101)$"
+    )  # the only arm simulated in this prototype
 
 
 def _events(rid: str) -> list[dict]:
@@ -58,7 +62,7 @@ def config():
     return {
         "models": llm.describe(),
         "sandbox": get_runner().name,
-        "busy": _lock.locked(),
+        "queued": _queue.qsize(),
     }
 
 
@@ -93,36 +97,82 @@ def run_detail(rid: str):
     }
 
 
-@app.post("/api/runs")
-def start(req: NewRun):
-    if not _lock.acquire(blocking=False):
-        raise HTTPException(
-            409, "a run is already in progress; this prototype runs one at a time"
-        )
-    rid = f"live-{time.strftime('%H%M%S')}-{uuid.uuid4().hex[:4]}"
-    d = RUNS / rid
-    d.mkdir(parents=True)
-    _live[rid] = []
-    log = open(d / "events.jsonl", "w")
+# HO-Cap subjects per task family, so parallel boxes learn from different people
+SUBJECTS = {
+    "place": ["subject_1", "subject_2"],
+    "stack": ["subject_5", "subject_6"],
+    "tower": ["subject_3", "subject_4"],
+}
+_queue: "queue.Queue[tuple]" = queue.Queue()
 
-    def emit(e):
-        e = {**e, "at": round(time.time(), 2)}
-        _live[rid].append(e)
-        log.write(json.dumps(e, default=str) + "\n")
-        log.flush()
 
-    def work():
+def _hocap(family: str | None) -> dict:
+    y = (ROOT / "runs" / "hocap" / "hocap_recordings.yaml").read_text()
+    subs = SUBJECTS.get(family or "place", SUBJECTS["place"])
+    urls = {k: re.search(rf"^{k}: *(\S+)", y, re.M).group(1) for k in subs}
+    return {
+        "dataset": "hocap",
+        "subject_urls": urls,
+        "camera": "043422252387",
+        "stride": 3,
+        "per_subject": 2,
+        "max_clips": 8,
+        "clip_seconds": 40,
+        "sandbox_seconds": 900,
+        "time_budget_s": 860,
+    }
+
+
+def _worker():
+    while True:
+        rid, req, d = _queue.get()
+        log = open(d / "events.jsonl", "a")
+
+        def emit(e):
+            e = {**e, "at": round(time.time(), 2)}
+            _live[rid].append(e)
+            log.write(json.dumps(e, default=str) + "\n")
+            log.flush()
+
         try:
-            run_pipeline(req.text, d, emit, family=req.family)
+            fam = req.family
+            if (
+                fam is None
+            ):  # let the planner choose, then fetch from the matching people
+                from .agent import plan as plan_search
+
+                p = plan_search(req.text)
+                fam = p["family"]
+            else:
+                p = None
+            run_pipeline(req.text, d, emit, family=fam, plan=p, dataset=_hocap(fam))
         except Exception as ex:  # noqa: BLE001 - surface any failure to the page instead of dying silently
             emit({"type": "error", "message": f"{type(ex).__name__}: {str(ex)[:200]}"})
         finally:
             log.close()
             _live.pop(rid, None)
-            _lock.release()
 
-    threading.Thread(target=work, daemon=True).start()
-    return {"id": rid}
+
+threading.Thread(target=_worker, daemon=True).start()
+
+
+@app.post("/api/runs")
+def start(req: NewRun):
+    rid = f"live-{time.strftime('%H%M%S')}-{uuid.uuid4().hex[:4]}"
+    d = RUNS / rid
+    d.mkdir(parents=True)
+    _live[rid] = [
+        {
+            "type": "queued",
+            "position": _queue.qsize(),
+            "robot": req.robot,
+            "text": req.text,
+            "at": round(time.time(), 2),
+        }
+    ]
+    (d / "events.jsonl").write_text(json.dumps(_live[rid][0]) + "\n")
+    _queue.put((rid, req, d))
+    return {"id": rid, "queued": _queue.qsize()}
 
 
 @app.websocket("/api/runs/{rid}/ws")
@@ -160,6 +210,14 @@ def media(rid: str, kind: str, name: str):
         raise HTTPException(404)
     f = RUNS / rid / kind / name
     if not f.is_file():
+        raise HTTPException(404)
+    return FileResponse(f)
+
+
+@app.get("/runs/{rid}/showcase.mp4")
+def showcase_video(rid: str):
+    f = RUNS / rid / "showcase.mp4"
+    if not RUN_ID.match(rid) or not f.is_file():
         raise HTTPException(404)
     return FileResponse(f)
 

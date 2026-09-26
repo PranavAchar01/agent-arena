@@ -93,8 +93,38 @@ def app(p, seconds: float):
     print("app frames", i + 1, "complete at", done_at, flush=True)
 
 
+def demo(p, seconds: float, speed: int, gap: int, hold: float = 5.0):
+    """The fleet demo: three prompts, three boxes, then the technical overview of the last one."""
+    b = p.chromium.launch()
+    page = b.new_context(viewport={"width": 1280, "height": 720}, device_scale_factor=1.5).new_page()
+    page.clock.install()
+    page.goto(f"http://127.0.0.1:8800/?demo=1&film=1&speed={speed}&gap={gap}&delay=1200&stagger=3500")
+    page.clock.pause_at(page.evaluate("Date.now()") + 50)
+    page.wait_for_timeout(2500)
+    ff = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "image2pipe", "-framerate", str(FPS), "-c:v", "png",
+                           "-i", "-", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-r", str(FPS),
+                           str(WORK / "app.mp4")], stdin=subprocess.PIPE)
+    done_at = None
+    for i in range(int(seconds * FPS)):
+        page.clock.run_for(1000 // FPS)
+        page.wait_for_timeout(15)
+        ff.stdin.write(page.screenshot(type="png"))
+        if done_at is None and page.evaluate("window.__demoDone === true"):
+            done_at = i
+        if done_at is not None and i - done_at > FPS * hold:
+            break
+        if i % 100 == 0:
+            print("frame", i, flush=True)
+    ff.stdin.close()
+    ff.wait()
+    b.close()
+    print("demo frames", i + 1, "done at", done_at, flush=True)
+
+
 with sync_playwright() as p:
     if sys.argv[1] == "cards":
         cards(p)
+    elif sys.argv[1] == "demo":
+        demo(p, float(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]))
     else:
         app(p, float(sys.argv[2]))

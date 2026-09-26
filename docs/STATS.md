@@ -1,6 +1,21 @@
 # Stats sheet (measured 2026-09-25 on this Mac)
 
-## 0. CURRENT (evening, after Pranav's notes): real HO-Cap video -> bowl, stack, tower. No chess anywhere.
+## 00. CURRENT (fleet UI): one box per robot, three fully automatic runs
+
+Every prompt spawns a box with its own sandbox and its own tuning job. Recorded runs (all fully automatic: sandbox
+fetch from HO-Cap, VLM verify, MediaPipe, physics gate, CPU tuning, 20 unseen layouts):
+
+| box | people in HO-Cap | clips verified | real moves kept | episodes | tune (CPU) | success |
+|---|---|---|---|---|---|---|
+| runs/box-place: put the block in the bowl | subjects 1, 2 | 4 / 4 | 17 / 24 | 386 | 21.5 s | **19 / 20** |
+| runs/box-stack: stack it on another block | subjects 5, 6 | 4 / 4 | 9 / 24 | 190 | 21.8 s | **18 / 20** |
+| runs/box-tower: add one more, a tower | subjects 3, 4 | 4 / 4 | 7 / 22 | 148 | 21.2 s | **18 / 20** |
+
+Each run took about 10 to 11 minutes end to end on this Mac (mostly the remote-zip reads). Containment: 85 planted
+hostile pages across 17 runs, 0 reached the app. The boxes currently queue (one heavy job at a time on this Mac);
+on Vultr each box would get its own instance. Fit with the event brief: docs/HACKATHON_FIT.md.
+
+## 0. Earlier the same evening (after Pranav's notes): real HO-Cap video -> bowl, stack, tower. No chess anywhere.
 
 Source: **HO-Cap** (UT Dallas IRVL + NVIDIA), **CC BY 4.0**, https://irvlutd.github.io/HOCap/ : real people at a
 table picking up and setting down everyday objects, 8 fixed third-person cameras. Found via a GitHub/HF survey of

@@ -79,15 +79,11 @@ def train(episodes, out: Path, iters: int = 3000, seed: int = 0, log=None) -> di
         loss.backward()
         opt.step()
         sched.step()
-        if log and it % 500 == 0:
-            log(
-                {
-                    "type": "train",
-                    "iter": it,
-                    "iters": iters,
-                    "loss": round(float(loss), 4),
-                }
-            )
+        if log and (it % 150 == 0 or it == iters - 1):
+            el = time.time() - t0
+            log({"type": "train", "iter": it, "iters": iters, "loss": round(float(loss), 4),
+                 "lr": round(sched.get_last_lr()[0], 6), "elapsed_s": round(el, 1),
+                 "samples_per_s": int((it + 1) * 256 / max(el, 1e-3))})
     wall = time.time() - t0
     params = sum(p.numel() for p in model.parameters())
     torch.save(
@@ -155,7 +151,7 @@ def eval_layouts(task: str, n: int = N_EVAL):
 
 
 def evaluate(
-    task: str, path: Path, n: int = N_EVAL, render_first: int = 0, render=None
+    task: str, path: Path, n: int = N_EVAL, render_first: int = 0, render=None, on_result=None
 ):
     sc = Scene.make(task)
     r = Runner(path)
@@ -165,6 +161,8 @@ def evaluate(
             sc, bxy, txy, yaw, render=render if i < render_first else None
         )
         results.append(bool(ok))
+        if on_result:
+            on_result(i, bool(ok))
         if frames:
             videos.append((ok, frames))
     return results, videos
