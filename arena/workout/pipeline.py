@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import threading
 import time
@@ -54,7 +55,7 @@ def plan(text: str) -> dict:
         d = llm.parse_json(llm.chat(prompt, max_tokens=200)) or {}
     except Exception:  # noqa: BLE001 - the default plan is fine without the model
         d = {}
-    extra = [str(q)[:40] for q in d.get("queries", []) if isinstance(q, str)][:4]
+    extra = [str(q)[:40] for q in d.get("queries", []) if isinstance(q, str) and re.search(r"curl|bicep|bícep|bizeps", q, re.I)][:3]
     return {
         "exercise": EXERCISE,
         "why": str(
@@ -370,7 +371,9 @@ def run(text: str, run_dir: Path, emit) -> dict:
     a = best["analysis"]
     rs = a["reps"][:3]
     t = np.array(a["t"])
-    ang = np.array(a["angle"])
+    ang = np.array([np.nan if x is None else x for x in a["angle"]], float)
+    ok = np.isfinite(ang)
+    ang[~ok] = np.interp(np.flatnonzero(~ok), np.flatnonzero(ok), ang[ok])
     w = (t >= rs[0]["start"] - 0.4) & (t <= rs[-1]["end"] + 0.4)
     emit(
         {

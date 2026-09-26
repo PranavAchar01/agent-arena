@@ -306,7 +306,7 @@
     plan: (e) => [`agent> ${e.exercise || `${e.white} vs ${e.black}, ${e.year}`}${e.why ? ": " + e.why : ""}`, "t-sys"],
     vm_create: (e) => [`vultr> VM ${e.instance.slice(0, 8)} · ${e.plan} · ${e.region}${e.warm ? " · pre-warmed" : ""}`, "t-sys"],
     vm_destroyed: (e) => [`vultr> VM deleted after ${e.seconds}s`, "t-sys"],
-    sandbox_start: (e, b) => { if (e.host && e.host !== "local") $(".sbx", b.root).textContent = e.host.split(" · ")[0]; return [`$ docker run --rm --read-only --cap-drop ALL ${e.container}`, "t-sys"]; },
+    sandbox_start: (e, b) => { $(".sbx", b.root).textContent = e.host && e.host !== "local" ? e.host.split(" · ")[0] : `sandbox ${e.container.replace("arena-sbx-", "").slice(0, 6)}`; return [`$ docker run --rm --read-only --cap-drop ALL ${e.container}`, "t-sys"]; },
     sandbox: (e) => [`  uid ${e.user} · ${e.env_secrets} secrets in env`, "t-dim"],
     search: (e) => [`scrapling> ${short(e.source, 30)}: "${short(e.query, 30)}" → ${e.hits}`, "t-info"],
     picked: (e) => [`agent> picked ${e.n} of ${e.of}`, "t-sys"],

@@ -37,6 +37,7 @@ HANDLE_R, HANDLE_HALF, PLATE_R, PLATE_HALF = 0.006, 0.028, 0.017, 0.005
 SPOT = np.array([0.20, 0.0])
 GRIP_OPEN = -0.02
 REACH, DESCEND, MAX_DQ = 0.15, 0.03, 0.05
+CURL_DQ = 0.09  # rad per 20 ms (4.5 rad/s) for joint-space curls: within the STS3215 no-load speed (~4.7 rad/s)
 CURL_START = np.radians(
     40.0
 )  # robot elbow at the human's "arm straight" (flexion 0); flexion adds up to ~135 deg
@@ -241,7 +242,7 @@ def _joints(sc: CurlScene, targets: np.ndarray, grip: float, frame, log=None):
     el = sc.model.joint("elbow_flex").qposadr[0]
     measured, slip = [], []
     for k, q in enumerate(targets):
-        q = sc.q + np.clip(q - sc.q, -MAX_DQ, MAX_DQ)
+        q = sc.q + np.clip(q - sc.q, -CURL_DQ, CURL_DQ)
         sc.q = q
         sc.step(np.append(q, grip))
         measured.append(sc.data.qpos[el])

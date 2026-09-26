@@ -96,7 +96,7 @@ def analyse(frames: list[dict], aspect: float) -> dict:
         "side": side,
         "tracked": round(seen, 2),
         "t": t.round(3).tolist(),
-        "angle": np.round(a, 1).tolist(),
+        "angle": [round(float(x), 1) if np.isfinite(x) else None for x in a],  # JSON has no NaN
         "reps": rs,
         "ok": len(rs) >= 2,
     }

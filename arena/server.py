@@ -133,6 +133,17 @@ def _hocap(family: str | None) -> dict:
     }
 
 
+def _finite(v):
+    """JSON has no NaN or Infinity: turn them into null before an event is stored or sent."""
+    if isinstance(v, float):
+        return v if v == v and abs(v) != float("inf") else None
+    if isinstance(v, list):
+        return [_finite(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _finite(x) for k, x in v.items()}
+    return v
+
+
 def _chain(prev: str, e: dict) -> str:
     return hashlib.sha256(
         (prev + json.dumps(e, sort_keys=True, default=str)).encode()
@@ -146,7 +157,7 @@ def _worker():
         head = [_live[rid][0]["h"]]
 
         def emit(e):
-            e = {k: v for k, v in e.items() if k != "h"}
+            e = {k: _finite(v) for k, v in e.items() if k != "h"}
             e["at"] = round(time.time(), 2)
             e["h"] = head[0] = _chain(head[0], e)
             _live[rid].append(e)
