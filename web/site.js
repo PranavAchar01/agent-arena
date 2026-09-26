@@ -129,7 +129,7 @@
       v.hidden = false;
       v.play().catch(() => {});
     },
-    done() { finishAll(); $("#rec-dot").classList.remove("is-live"); clearInterval(clockTimer); $("#kicker").textContent = "Run complete"; $("#go").disabled = false; },
+    done(e) { if (e && "kept" in e) { feed(`sandbox finished: kept ${e.kept} of ${e.candidates}`, "l-sys"); return; } finishAll(); $("#rec-dot").classList.remove("is-live"); clearInterval(clockTimer); $("#kicker").textContent = "Run complete"; $("#go").disabled = false; },
     error(e) { feed(`error: ${e.message}`, "l-no"); handlers.done(); },
   };
   const handle = (e) => (handlers[e.type] || (() => {}))(e);
@@ -144,7 +144,7 @@
       const s = Math.floor((Date.now() - t0) / 1000);
       $("#clock").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
     }, 500);
-    setTimeout(() => $("#output").scrollIntoView({ behavior: "smooth", block: "start" }), 250);
+    if (!document.body.classList.contains("is-film")) setTimeout(() => $("#output").scrollIntoView({ behavior: "smooth", block: "start" }), 250);
   }
 
   $("#composer").addEventListener("submit", async (ev) => {
@@ -169,7 +169,29 @@
       const text = (d.summary?.text || "").replace(/^I want to train a robot to /, "");
       task.textContent = text;
       $("#kicker").textContent = "Recorded run";
-      if (qs.get("autostart") !== "0") await new Promise((res) => setTimeout(res, Number(qs.get("delay") || 1200)));
+      const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+      if (qs.get("film")) {
+        // film mode: type the sentence, press the button, then follow the run down the page
+        document.body.classList.add("is-film");
+        task.textContent = "";
+        await wait(Number(qs.get("delay") || 900));
+        for (const ch of text) { task.textContent += ch; await wait(55); }
+        await wait(600);
+        $("#go").classList.add("is-pressed");
+        await wait(180);
+        $("#go").classList.remove("is-pressed");
+        let y = scrollY;
+        setInterval(() => {
+          const st = document.querySelector(".stage.is-on") || document.querySelector(".stage.is-done:last-of-type");
+          if (!st || !$("#output").classList.contains("is-open")) return;
+          const r = st.getBoundingClientRect();
+          const top = scrollY + r.top - 150;
+          const bottom = scrollY + r.bottom - innerHeight + 60;
+          const goal = Math.max(Math.min(top, bottom), document.querySelector("#output").offsetTop - 16);
+          y += (Math.min(goal, top) - y) * 0.12;
+          window.scrollTo(0, y);
+        }, 33);
+      } else if (qs.get("autostart") !== "0") await wait(Number(qs.get("delay") || 1200));
       openRun(`Train an SO-101 to ${text}`);
       let prev = null;
       for (const e of d.events) {

@@ -203,3 +203,8 @@ body {
   .mv { grid-template-columns: 80px 1fr auto; }
 }
 @media (prefers-reduced-motion: reduce) { .hero-img { animation: none; } * { animation-duration: 1ms !important; } }
+
+/* film mode: the recorder drives the page; no grain flicker, no inline video (the sim plays full screen after) */
+.is-film .grain { display: none; }
+.is-film #policy { display: none !important; }
+.cta.is-pressed { transform: scale(0.97); filter: brightness(0.92); }

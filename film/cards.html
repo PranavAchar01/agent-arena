@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Handoff film cards</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hedvig+Letters+Serif:opsz@12..24&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root { --ink: #07090c; --text: #f0ece4; --text2: rgba(240,236,228,.62); --amber: #deac52; --amber-hi: #f1cf8a; --ok: #8fd3a6; }
+  html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; background: transparent; color: var(--text);
+    font-family: Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  .full { position: absolute; inset: 0; background: var(--ink); display: none; }
+  .bg { position: absolute; inset: 0; background: url("../web/media/desk-dither.png") 58% 70% / cover no-repeat; image-rendering: pixelated; }
+  .scrim { position: absolute; inset: 0; background: radial-gradient(70% 60% at 50% 45%, rgba(7,9,12,.72), rgba(7,9,12,.35) 70%), linear-gradient(to bottom, rgba(7,9,12,.2), rgba(7,9,12,.8)); }
+  .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 18px; }
+  .word { font: 400 22px/1 "Hedvig Letters Serif", Georgia, serif; color: var(--text2); letter-spacing: -.01em; }
+  h1 { margin: 0; font: 400 58px/1.18 "Hedvig Letters Serif", Georgia, serif; letter-spacing: -.02em; max-width: 16em; }
+  h1 em { font-style: normal; color: var(--amber-hi); }
+  .sub { font-size: 18px; color: var(--text2); }
+  .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 48px 30px; display: none;
+    background: linear-gradient(to bottom, rgba(7,9,12,0), rgba(7,9,12,.82) 38%); }
+  .cap .t { font: 400 34px/1.2 "Hedvig Letters Serif", Georgia, serif; letter-spacing: -.015em; }
+  .cap .t b { font-weight: 400; color: var(--amber-hi); margin-right: 10px; }
+  .cap .m { margin-top: 8px; font: 500 16px/1.4 "JetBrains Mono", monospace; color: var(--text2); }
+  .cap .m i { font-style: normal; color: var(--ok); }
+  .tag { position: absolute; right: 28px; top: 22px; font: 500 12px/1 "JetBrains Mono", monospace; color: var(--text2);
+    padding: 8px 12px; border-radius: 999px; background: rgba(7,9,12,.6); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); display: none; }
+  .grid { display: grid; grid-template-columns: repeat(3, 300px); gap: 16px; margin-top: 10px; }
+  .cell { text-align: left; padding: 18px 20px; border-radius: 16px; background: rgba(16,19,24,.78); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); }
+  .cell dd { margin: 0; font: 500 30px/1.2 "JetBrains Mono", monospace; color: var(--amber-hi); }
+  .cell dt { margin-top: 6px; font-size: 14px; line-height: 1.4; color: var(--text2); }
+  .foot { position: absolute; bottom: 26px; left: 0; right: 0; text-align: center; font-size: 13px; color: rgba(240,236,228,.45); }
+</style>
+</head>
+<body>
+  <section class="full" id="title">
+    <div class="bg"></div><div class="scrim"></div>
+    <div class="center">
+      <span class="word">Handoff</span>
+      <h1>I don't know what I want my robot to do yet.<br><em>So it learns from people on the open web.</em></h1>
+      <span class="sub">Openly licensed video, scraped in a throwaway sandbox, checked by a VLM, learned by an SO-101.</span>
+    </div>
+  </section>
+
+  <section class="full" id="end">
+    <div class="bg"></div><div class="scrim"></div>
+    <div class="center">
+      <span class="word">Handoff</span>
+      <h1>First A. Then B. Then C.</h1>
+      <div class="grid">
+        <div class="cell"><dd>0 / 45</dd><dt>planted hostile pages that reached the app (5 per run, 9 runs)</dt></div>
+        <div class="cell"><dd>~1 min</dd><dt>to train each policy on a laptop CPU</dt></div>
+        <div class="cell"><dd>15 · 13 · 19</dd><dt>of 20 unseen layouts for push, place, stack</dt></div>
+      </div>
+    </div>
+    <p class="foot">Local prototype · MuJoCo simulation · the policy reads robot state and object positions, not pixels</p>
+  </section>
+
+  <div class="tag" id="tag">MuJoCo simulation · unseen layout</div>
+  <div class="cap" id="cap"><div class="t" id="cap-t"></div><div class="m" id="cap-m"></div></div>
+
+<script>
+  const q = new URLSearchParams(location.search);
+  const card = q.get("card");
+  const caps = {
+    push: ["A", "push the block onto the target", "<i>15/20</i> unseen layouts · hand motion from public-domain video"],
+    place: ["B", "put the block in the bowl", "<i>13/20</i> unseen layouts · learned from one CC BY-SA chess video · 61 s on CPU"],
+    stack: ["C", "stack the block on the blue block", "<i>19/20</i> unseen layouts · hand motion from public-domain video"],
+  };
+  if (card === "title" || card === "end") document.getElementById(card).style.display = "block";
+  else if (caps[card]) {
+    const [l, t, m] = caps[card];
+    document.getElementById("cap").style.display = "block";
+    document.getElementById("tag").style.display = "block";
+    document.getElementById("cap-t").innerHTML = `<b>${l}</b>${t}`;
+    document.getElementById("cap-m").innerHTML = m;
+  }
+</script>
+</body>
+</html>

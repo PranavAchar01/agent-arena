@@ -4,3 +4,5 @@ data/
 runs/
 *.pyc
 .env
+film/work/
+film/*.mp4
