@@ -377,12 +377,8 @@ def build() -> tuple[mujoco.MjModel, list[PieceInfo]]:
         )
         pieces.append(PieceInfo(name, f"{name}_free", color, chess.QUEEN))
 
-    tv = [
-        0.46,
-        0.0,
-        0.26,
-    ]  # across the board from the arm, the way a broadcast frames a game
-    w.add_camera(name="judge", pos=tv, xyaxes=_look_at(tv, [0.17, 0.0, 0.0]), fovy=52)
+    tv = [0.40, -0.26, 0.22]  # three-quarter view from White's side: the arm reaches over the whole board
+    w.add_camera(name="judge", pos=tv, xyaxes=_look_at(tv, [0.18, 0.0, 0.01]), fovy=38)
     side = [0.2, -0.36, 0.22]
     w.add_camera(
         name="side", pos=side, xyaxes=_look_at(side, [0.18, 0.0, 0.02]), fovy=48

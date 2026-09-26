@@ -68,7 +68,7 @@
     warn: (e) => [`· ${e.message}`, "t-dim"],
     error: (e) => [`error: ${e.message}`, "t-no"],
     killed: () => ["■ killed by operator", "t-no"],
-    done: (e) => [`done in ${e.timings_s.total}s`, "t-dim"],
+    done: (e) => (e.timings_s ? [`done in ${e.timings_s.total}s`, "t-dim"] : [`  sandbox finished · ${e.candidates} found`, "t-dim"]),
   };
 
   function handle(e) {
@@ -104,8 +104,9 @@
     s.hidden = false;
     video.poster = e.poster;
     video.src = e.video;
-    video.oncanplay = () => { $("#wait").hidden = true; };
-    video.play().catch(() => {});
+    video.muted = true;
+    video.oncanplay = () => { $("#wait").hidden = true; video.play().catch(() => {}); };
+    video.load();
   }
 
   video.addEventListener("timeupdate", () => {
@@ -143,6 +144,16 @@
     }).join("");
   }
   board(null);
+
+  const replayKey = new URLSearchParams(location.search).get("replay");
+  if (replayKey && /^[0-9a-f]{16}$/.test(replayKey)) {  // backup: play a rehearsed game without the live agent run
+    fetch(`/api/chess/${replayKey}`).then((r) => r.json()).then((e) => {
+      $("#stage").hidden = false;
+      line("> replay of a rehearsed game (no live agent run)", "t-dim");
+      showMoves(e.moves.map((m) => m.san));
+      play(e);
+    });
+  }
 
   if (new URLSearchParams(location.search).has("demo")) {
     (async () => {
