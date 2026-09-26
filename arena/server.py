@@ -16,6 +16,7 @@ Run: .venv/bin/python -m uvicorn arena.server:app --port 8800
 from __future__ import annotations
 
 import asyncio
+import atexit
 import hashlib
 import json
 import os
@@ -33,7 +34,7 @@ from pydantic import BaseModel, Field
 
 from . import llm
 from .pipeline import run as run_pipeline
-from .sandbox.runner import BoxKilled, box, check_killed
+from .sandbox.runner import BoxKilled, box, check_killed, close_pool, start_pool
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
@@ -50,6 +51,7 @@ GENESIS = "0" * 64
 class NewRun(BaseModel):
     text: str = Field(min_length=8, max_length=200)
     family: str | None = Field(default=None, pattern="^(place|stack|tower)$")
+    mode: str = Field(default="robot", pattern="^(robot|chess)$")
     robot: str = Field(
         default="so101", pattern="^(so101)$"
     )  # the only arm simulated in this prototype
@@ -163,6 +165,11 @@ def _worker():
             with box(rid) as b:
                 _boxes[rid] = b
                 llm.audit.set(emit)
+                if req.mode == "chess":
+                    from .chess.pipeline import run as run_chess
+
+                    run_chess(req.text, d, emit)
+                    continue
                 fam = req.family
                 if (
                     fam is None
@@ -192,6 +199,10 @@ WORKERS = int(
 )
 for _ in range(WORKERS):
     threading.Thread(target=_worker, daemon=True).start()
+start_pool()
+atexit.register(
+    close_pool
+)  # warm VMs are deleted when the server exits; scripts/vultr.py sweep covers a hard kill
 
 
 @app.post("/api/runs/{rid}/kill")
@@ -244,7 +255,7 @@ def audit_verify(rid: str):
 
 @app.post("/api/runs")
 def start(req: NewRun):
-    rid = f"live-{time.strftime('%H%M%S')}-{uuid.uuid4().hex[:4]}"
+    rid = f"{'chess' if req.mode == 'chess' else 'live'}-{time.strftime('%H%M%S')}-{uuid.uuid4().hex[:4]}"
     d = RUNS / rid
     d.mkdir(parents=True)
     first = {
@@ -314,6 +325,30 @@ def policy_video(rid: str):
     if not RUN_ID.match(rid) or not f.is_file():
         raise HTTPException(404)
     return FileResponse(f)
+
+
+@app.get("/chess/{key}/{name}")
+def chess_media(key: str, name: str):
+    if not re.fullmatch(r"[0-9a-f]{16}", key) or name not in (
+        "game.mp4",
+        "poster.jpg",
+        "moves.json",
+    ):
+        raise HTTPException(404)
+    f = RUNS / "chess" / key / name
+    if not f.is_file():
+        raise HTTPException(404)
+    return FileResponse(f)
+
+
+@app.get("/api/chess/{key}")
+def chess_replay(key: str):
+    from .chess.pipeline import replay_info
+
+    info = replay_info(key) if re.fullmatch(r"[0-9a-f]{16}", key) else None
+    if info is None:
+        raise HTTPException(404)
+    return info
 
 
 app.mount("/", StaticFiles(directory=WEB, html=True), name="web")

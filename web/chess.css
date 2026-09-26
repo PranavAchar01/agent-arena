@@ -1,0 +1,47 @@
+/* Handoff Chess: one page, prompt then stage. Tokens come from site.css. */
+body.chess { background: var(--ink-0); }
+.c-hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding: var(--s5) var(--inset) var(--s6); max-width: 1200px; margin: 0 auto; }
+.c-hero .title { margin-top: var(--s7); }
+.c-robot { display: inline-flex; align-items: center; gap: 8px; padding: 0 14px; font: 500 13px/1 var(--sans); color: var(--text-2); white-space: nowrap; }
+
+.c-stage { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: var(--s4); max-width: 1320px; margin: 0 auto; padding: 0 var(--inset) var(--s7); }
+.c-left { display: flex; flex-direction: column; gap: var(--s4); min-width: 0; }
+.c-right { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+
+.c-term { background: var(--term); border-radius: var(--r-card); box-shadow: inset 0 0 0 1px var(--hair); display: flex; flex-direction: column; height: 360px; overflow: hidden; }
+.c-term-body { flex: 1; overflow: hidden; padding: 10px 12px; font: 400 11px/16px var(--mono); color: rgba(var(--white), 0.72); display: flex; flex-direction: column; justify-content: flex-end; }
+.c-term-body div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.c-mini { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 10px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--hair); }
+.c-mini i { display: grid; place-items: center; font: 400 clamp(16px, 2.6vw, 30px)/1 "Segoe UI Symbol", "Apple Symbols", serif; font-style: normal; }
+.c-mini i.l { background: #e6dbc2; } .c-mini i.d { background: #735640; }
+.c-mini i.w { color: #fbf8f0; text-shadow: 0 0 1px #000, 0 1px 1px #000; } .c-mini i.b { color: #141414; }
+.c-mini i.hl { box-shadow: inset 0 0 0 3px rgba(var(--amber), 0.9); }
+
+.c-video { position: relative; aspect-ratio: 16 / 9; border-radius: var(--r-card); overflow: hidden; background: #000; box-shadow: inset 0 0 0 1px var(--hair); }
+.c-video video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.c-wait { position: absolute; inset: 0; display: grid; place-items: center; font: 500 13px/1 var(--mono); color: var(--text-3); background: radial-gradient(circle at 50% 45%, #11151b, #06080a 70%); }
+.c-wait[hidden] { display: none; }
+.c-tag { position: absolute; top: 12px; left: 12px; padding: 6px 10px; border-radius: 999px; font: 500 11px/1 var(--mono); color: var(--text); background: rgba(7, 9, 12, 0.72); backdrop-filter: var(--frost); }
+.c-caption { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); padding: 10px 18px; border-radius: 14px; font: 400 26px/1 var(--serif); color: var(--text); background: rgba(7, 9, 12, 0.7); backdrop-filter: var(--frost); white-space: nowrap; }
+.c-caption small { font: 500 12px/1 var(--mono); color: var(--text-3); margin-left: 10px; }
+
+.c-moves { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 6px; font: 500 12px/1 var(--mono); }
+.c-moves li { padding: 5px 7px; border-radius: 7px; color: var(--text-3); cursor: pointer; }
+.c-moves li b { color: var(--text-3); font-weight: 400; margin-right: 3px; }
+.c-moves li.done { color: var(--text-2); }
+.c-moves li.on { color: var(--ink-0); background: var(--accent); }
+.c-moves li.on b { color: var(--ink-1); }
+
+.c-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--s2); margin: var(--s2) 0 0; }
+.c-stats div { background: var(--ink-1); border-radius: 12px; padding: 12px 14px; box-shadow: inset 0 0 0 1px var(--hair); }
+.c-stats dd { margin: 0; font: 400 22px/1 var(--serif); color: var(--text); }
+.c-stats dt { margin-top: 6px; font: 500 11px/1.3 var(--sans); color: var(--text-3); }
+
+@media (max-width: 880px) {
+  .c-stage { grid-template-columns: 1fr; padding: 0 16px var(--s6); }
+  .c-hero { padding: var(--s4) 16px var(--s5); }
+  .c-left { order: 2; }
+  .c-stats { grid-template-columns: repeat(2, 1fr); }
+  .c-caption { font-size: 18px; }
+}

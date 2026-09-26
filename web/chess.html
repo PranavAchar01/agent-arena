@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Handoff Chess</title>
+  <meta name="description" content="Name a famous chess game. An agent finds its moves on the open web inside a throwaway sandbox, python-chess checks every move, and a simulated SO-101 plays both sides, every move rehearsed in physics.">
+  <meta name="theme-color" content="#07090c">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%2307090c'/%3E%3Crect x='14' y='30' width='16' height='16' fill='%23ba483a'/%3E%3Crect x='34' y='18' width='16' height='28' fill='%23c4963e'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hedvig+Letters+Serif:opsz@12..24&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="site.css">
+  <link rel="stylesheet" href="chess.css">
+  <script src="chess.js" defer></script>
+</head>
+<body class="chess">
+  <main class="page">
+    <section class="c-hero">
+      <header class="hero-bar">
+        <span class="wordmark">Handoff</span>
+        <span class="hero-tag" id="backend">One arm. Both sides of the board.</span>
+      </header>
+      <h1 class="title">Name any famous game.<br><em>One robot plays both sides.</em></h1>
+      <form class="composer" id="composer" autocomplete="off">
+        <div class="bar">
+          <span class="c-robot"><span class="robot-dot"></span>SO-101</span>
+          <label class="sr-only" for="prompt">Which game?</label>
+          <input class="prompt" id="prompt" type="text" maxlength="160" spellcheck="false" placeholder="Replay Deep Blue vs. Kasparov, 1997, Game 6">
+          <button type="submit" class="cta" id="go">Play</button>
+        </div>
+        <div class="chips">
+          <button type="button" class="chip" data-text="Replay Deep Blue vs. Kasparov, 1997, Game 6">Deep Blue vs. Kasparov, 1997, Game 6</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="c-stage" id="stage" hidden>
+      <div class="c-left">
+        <div class="c-term">
+          <div class="term-bar"><i></i><i></i><i></i><span id="term-title">agent</span></div>
+          <div class="c-term-body" id="log"></div>
+        </div>
+        <div class="c-mini" id="mini" aria-label="Board"></div>
+      </div>
+      <div class="c-right">
+        <div class="c-video">
+          <video id="video" muted playsinline preload="auto"></video>
+          <div class="c-wait" id="wait"><span>finding the game…</span></div>
+          <div class="c-tag" id="tag" hidden></div>
+          <div class="c-caption" id="caption" hidden></div>
+        </div>
+        <ol class="c-moves" id="moves"></ol>
+        <dl class="c-stats" id="stats" hidden></dl>
+      </div>
+    </section>
+  </main>
+  <footer class="foot"><p>Simulated SO-101 in MuJoCo · every move rehearsed and checked in physics before it is played · replay sped up</p></footer>
+  <div class="grain" aria-hidden="true"></div>
+</body>
+</html>

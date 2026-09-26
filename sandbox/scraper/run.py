@@ -342,6 +342,11 @@ def main():
         caps=job.get("caps", {}),
     )
     client = httpx.Client(headers={"User-Agent": job.get("user_agent") or UA}, follow_redirects=False)
+    if job.get("mode") == "pgn":  # find a chess game's moves (Scrapling); see pgn.py
+        from pgn import run as find_game
+
+        find_game(job, emit, OUT, job.get("user_agent") or UA, deadline)
+        return
     if job.get("dataset") == "hocap":
         from dataset import hocap
         kept = hocap(job, emit, OUT, reencode, stills, lambda: time.time() < deadline)

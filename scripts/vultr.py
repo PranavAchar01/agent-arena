@@ -2,7 +2,7 @@
 
 scripts/vultr.py check   account, region and plan availability, and (with VULTR_INFERENCE_KEY) the inference models
 scripts/vultr.py smoke   one throwaway VM end to end: create, boot, build the sandbox, run an empty job, delete
-scripts/vultr.py sweep   delete leftover arena-sbx instances, firewall groups and SSH keys (after a crash)
+scripts/vultr.py sweep   delete arena-sbx VMs older than 90 min, plus unused firewall groups and keys (after a crash)
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from pathlib import Path
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from arena.sandbox import runner as R  # noqa: E402
+from arena.sandbox import runner as R
 
 
 def api() -> httpx.Client:
@@ -73,12 +73,20 @@ def smoke() -> None:
 
 
 def sweep() -> None:
+    """Only VMs older than SWEEP_MINUTES (default 90): live boxes and warm-pool VMs are always younger."""
+    import datetime as dt
+
     c = api()
+    cutoff = dt.datetime.now(dt.UTC) - dt.timedelta(
+        minutes=int(os.environ.get("SWEEP_MINUTES", "90"))
+    )
     for i in (
         c.get("/instances", params={"tag": "arena-sbx", "per_page": 500})
         .raise_for_status()
         .json()["instances"]
     ):
+        if dt.datetime.fromisoformat(i["date_created"]) > cutoff:
+            continue
         c.delete(f"/instances/{i['id']}").raise_for_status()
         print("deleted instance", i["id"], i["label"])
     for f in (

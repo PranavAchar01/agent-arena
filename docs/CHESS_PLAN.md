@@ -5,16 +5,19 @@ robot moves chess pieces." Live demo slot is 3 minutes. The real SO-101 is ready
 simulated SO-101 in MuJoCo.
 
 ## Build order
-1. `arena/chess/scene.py`: SO-101 + 8x8 board, 2.4 cm squares, board centre x=0.19 (x 0.094..0.286, y +-0.096),
-   32 code-built low-poly pieces (free bodies). Reach map (jaws down): z=0.02 reaches x<=0.28 for |y|<=0.10.
-2. `arena/chess/move.py`: square-to-square pick and place (captures go to a tray first), jaws aligned with the file
-   axis, opening about 2 cm, lift profile from human chess-move shapes. Every move is simulated headless first and
-   verified (piece on target square, nothing else disturbed); only a verified move is played to the viewer.
-3. `arena/chess/game.py`: python-chess; Stockfish if installed, else a small minimax.
-4. Server `/api/chess/*` + WebSocket JPEG stream of the robot executing its move; `web/chess.html`.
-5. Scrapling replaces httpx fetch/parse in the sandbox scraper; the agent finds openly licensed chess-move videos,
-   MediaPipe gives the human move shape (lift height, timing) the robot uses.
+1. DONE `arena/chess/scene.py`: SO-101 at the SIDE of the board (his call: it plays both colours without moving),
+   2.2 cm squares, board centre x=0.195, 12 mm pieces on a 16 mm grippable base, trays beyond each back rank.
+2. DONE `arena/chess/move.py`: closed-loop pick and place (the soft STS3215 servos lag ~5 mm), carry height capped by
+   a measured reach ceiling that also rejects self-collision, joint rate limit, 6 rehearsal variants per transfer.
+   Deep Blue vs Kasparov 1997 G6: 37/37 moves pass (<= 5 mm off centre, nothing knocked > 3 mm).
+3. DONE `arena/chess/agent.py` + `pipeline.py`: prompt -> search (Scrapling in sandbox) -> pick article by number ->
+   extract all move lists -> pick game by number -> strict python-chess parse -> cached physics replay by move hash.
+4. DONE server mode "chess", /chess/{key}/game.mp4, web/chess.html (?demo=1 types the prompt). Replay rendered on a
+   Vultr VM (scripts/vultr_render.py, OSMesa) and cached under runs/chess/<key>/. Vultr warm pool: one fresh VM
+   pre-booted so a live box starts instantly.
+5. DONE sandbox/scraper/pgn.py (Scrapling). Human video motion shapes are NOT used in chess yet (synthetic timing).
 
 ## Honesty lines
 - Simulation until the real arm is calibrated. Say "simulated SO-101".
-- The move shape comes from people; the square-to-square path is IK. Don't call it an end-to-end learned policy.
+- The square-to-square path is IK + closed-loop control, not a learned policy. Don't call it learned.
+- The replay is precomputed physics (about 2 min of compute for 37 moves), shown sped up; say so.

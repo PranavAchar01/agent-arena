@@ -313,12 +313,37 @@ class VultrRunner(SandboxRunner):
         self._t0 = 0.0
         self._lock = threading.Lock()
         self._closed = False
+        self.warm = False
+        self._claimed = False
+        self.firewall_note = ""
 
     def run(self, job, out_dir, on_event):
         check_killed()
         self._emit = on_event
         if self.docker is None:
             self._provision()
+        elif self.warm and not self._claimed:
+            self._claimed = True
+            on_event(
+                {
+                    "type": "vm_create",
+                    "backend": "vultr",
+                    "instance": self.instance,
+                    "region": self.region,
+                    "plan": self.plan,
+                    "hourly_usd": self.hourly,
+                    "firewall": self.firewall_note,
+                    "warm": True,
+                }
+            )
+            on_event(
+                {
+                    "type": "vm_ready",
+                    "instance": self.instance,
+                    "seconds": 0.0,
+                    "docker": "pre-warmed, never used",
+                }
+            )
         return self.docker.run(job, out_dir, on_event)
 
     def kill(self):
@@ -399,9 +424,7 @@ class VultrRunner(SandboxRunner):
                 "region": self.region,
                 "plan": self.plan,
                 "hourly_usd": self.hourly,
-                "firewall": "inbound: SSH only, key auth, fresh key per box"
-                if cidr.prefixlen == 0
-                else f"inbound 22/tcp from {cidr} only",
+                "firewall": self._fw_note(cidr),
             }
         )
         ip = self._wait_active()
@@ -471,6 +494,14 @@ class VultrRunner(SandboxRunner):
                 "seconds": round(time.time() - self._t0, 1),
             }
         )
+
+    def _fw_note(self, cidr) -> str:
+        self.firewall_note = (
+            "inbound: SSH only, key auth, fresh key per box"
+            if cidr.prefixlen == 0
+            else f"inbound 22/tcp from {cidr} only"
+        )
+        return self.firewall_note
 
     def _wait_active(self) -> str:
         deadline = time.time() + int(os.environ.get("VULTR_BOOT_SECONDS", "600"))
@@ -583,10 +614,45 @@ def _public_ip() -> str:
     )
 
 
+_pool: list[VultrRunner] = []
+_pool_lock = threading.Lock()
+
+
+def _prewarm() -> None:
+    """Boot one VM ahead of time so the next box starts instantly. It is still fresh: no job has run on it."""
+    try:
+        v = VultrRunner()
+        v.warm = True
+        v._provision()
+    except Exception:  # noqa: BLE001 - a failed prewarm just means the next box boots its own VM
+        return
+    with _pool_lock:
+        _pool.append(v)
+
+
+def start_pool() -> None:
+    if (
+        os.environ.get("SANDBOX_BACKEND") == "vultr"
+        and os.environ.get("VULTR_WARM", "1") == "1"
+    ):
+        threading.Thread(target=_prewarm, daemon=True).start()
+
+
+def close_pool() -> None:
+    with _pool_lock:
+        while _pool:
+            _pool.pop().close()
+
+
 def _backend() -> SandboxRunner:
-    return {"docker": DockerRunner, "vultr": VultrRunner}[
-        os.environ.get("SANDBOX_BACKEND", "docker")
-    ]()
+    name = os.environ.get("SANDBOX_BACKEND", "docker")
+    if name == "vultr":
+        with _pool_lock:
+            v = _pool.pop() if _pool else None
+        if v is not None:
+            start_pool()  # refill for the box after this one
+            return v
+    return {"docker": DockerRunner, "vultr": VultrRunner}[name]()
 
 
 def get_runner() -> SandboxRunner:
@@ -614,6 +680,18 @@ def _json_lines(stream) -> Iterator[dict]:
 
 def validate_output(scratch: Path, out_dir: Path) -> dict:
     """Trust nothing from the sandbox: check the manifest's shape, copy only expected files, cap total size."""
+    pg = scratch / "pgn.json"
+    if (
+        pg.is_file() and pg.stat().st_size < 1_000_000
+    ):  # chess games found by the sandbox: strings only, capped
+        raw = json.loads(pg.read_text())
+        games = [
+            {k: str(c.get(k, ""))[:6000] for k in ("page", "title", "moves", "context")}
+            for c in raw.get("candidates", [])[:16]
+            if isinstance(c, dict)
+        ]
+        (out_dir / "pgn.json").write_text(json.dumps({"candidates": games}, indent=1))
+        return {"clips": [], "games": games}
     mf = scratch / "manifest.json"
     if not mf.exists():
         return {"clips": []}

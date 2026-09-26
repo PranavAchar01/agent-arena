@@ -332,7 +332,7 @@ class Mover:
         )
         ok = err < t.tol and tilt < 10 and knocked < 0.003 and pos[2] < 0.003
         return {
-            "ok": ok,
+            "ok": bool(ok),
             "err_mm": round(err * 1000, 1),
             "tilt_deg": round(tilt, 1),
             "knocked_mm": round(knocked * 1000, 1),
