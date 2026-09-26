@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {"name": "arena", "runtimeExecutable": "nice", "runtimeArgs": ["-n", "10", ".venv/bin/python", "-m", "uvicorn", "arena.server:app", "--host", "127.0.0.1", "--port", "8800"], "port": 8800}
+  ]
+}

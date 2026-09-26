@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Handoff</title>
+  <meta name="description" content="Type a task. An agent finds openly licensed videos of people doing it, a sandbox absorbs the junk, a VLM checks every clip, and an SO-101 learns it in simulation.">
+  <meta name="theme-color" content="#07090c">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%2307090c'/%3E%3Crect x='14' y='30' width='16' height='16' fill='%23ba483a'/%3E%3Crect x='34' y='18' width='16' height='28' fill='%23c4963e'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hedvig+Letters+Serif:opsz@12..24&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="site.css">
+  <script src="site.js" defer></script>
+</head>
+<body>
+  <main class="page">
+    <section class="hero" id="hero">
+      <div class="hero-media" aria-hidden="true"><div class="hero-img"></div></div>
+      <div class="hero-scrim" aria-hidden="true"></div>
+      <header class="hero-bar">
+        <span class="wordmark">Handoff</span>
+        <span class="hero-tag" id="hero-tag">Teach a robot from the open web</span>
+      </header>
+
+      <form class="composer" id="composer" autocomplete="off">
+        <p class="sentence">I want to train a robot to
+          <span class="blank" id="task" contenteditable="true" role="textbox" aria-label="Task" spellcheck="false"
+            data-placeholder="stack a block on another block"></span>.
+        </p>
+        <div class="actions">
+          <button type="submit" class="cta" id="go">Train it</button>
+          <p class="cta-hint" id="go-hint">Runs live: scrape, verify, retarget, train, test.</p>
+        </div>
+        <div class="chips" id="chips">
+          <span class="chips-label">I don't know what I want it to do yet. First</span>
+          <button type="button" class="chip" data-family="push" data-text="push a block onto a target">A · push a block onto a target</button>
+          <button type="button" class="chip" data-family="place" data-text="put a block in a bowl">B · put a block in a bowl</button>
+          <button type="button" class="chip" data-family="stack" data-text="stack a block on another block">C · stack a block on another</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="output" id="output" aria-label="Run">
+      <div class="output-panel">
+        <header class="run-head">
+          <div>
+            <p class="run-kicker"><span class="rec-dot" id="rec-dot"></span><span id="kicker">Live run</span></p>
+            <h2 class="run-title" id="run-title"></h2>
+          </div>
+          <p class="run-clock" id="clock">0:00</p>
+        </header>
+
+        <dl class="stats" id="stats">
+          <div class="stat" data-k="found"><dd>0</dd><dt>Found</dt></div>
+          <div class="stat" data-k="downloaded"><dd>0</dd><dt>Downloaded</dt></div>
+          <div class="stat stat--no" data-k="blocked"><dd>0</dd><dt>Blocked</dt></div>
+          <div class="stat stat--ok" data-k="accepted"><dd>0</dd><dt>Verified</dt></div>
+          <div class="stat" data-k="episodes"><dd>0</dd><dt>Episodes</dt></div>
+          <div class="stat stat--ok" data-k="success"><dd>–</dd><dt>Success</dt></div>
+        </dl>
+
+        <ol class="stages">
+          <li class="stage" id="st-scrape">
+            <div class="stage-head"><span class="stage-n">1</span><h3>Scrape, inside a throwaway sandbox</h3><span class="stage-took"></span></div>
+            <p class="stage-sub" id="sbx-line">The agent plans the search. A fresh container with no secrets does every fetch.</p>
+            <div class="queries" id="queries"></div>
+            <div class="feed" id="feed"></div>
+            <div class="blocked" id="blocked"></div>
+          </li>
+          <li class="stage" id="st-verify">
+            <div class="stage-head"><span class="stage-n">2</span><h3>Verify every clip with a VLM</h3><span class="stage-took"></span></div>
+            <p class="stage-sub">One real person, a hand, the object, the right motion. Everything else is rejected with a reason.</p>
+            <div class="clips" id="clips"></div>
+          </li>
+          <li class="stage" id="st-motion">
+            <div class="stage-head"><span class="stage-n">3</span><h3>Hand motion to SO-101, gated by physics</h3><span class="stage-took"></span></div>
+            <p class="stage-sub">MediaPipe tracks the hand. Each move is retargeted to the arm and replayed in MuJoCo; only moves that finish the task are kept.</p>
+            <div class="moves" id="moves"></div>
+          </li>
+          <li class="stage" id="st-train">
+            <div class="stage-head"><span class="stage-n">4</span><h3>Train a policy, test it on unseen layouts</h3><span class="stage-took"></span></div>
+            <p class="stage-sub" id="train-line">A small policy trains on the CPU, then runs on 20 fixed layouts it never saw.</p>
+            <div class="result" id="result">
+              <div class="evaldots" id="evaldots"></div>
+              <video id="policy" muted loop playsinline hidden></video>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+  </main>
+  <footer class="foot" id="foot"><p>Local prototype. Simulation only; the policy reads robot state and object positions, not camera pixels.</p></footer>
+  <div class="grain" aria-hidden="true"></div>
+</body>
+</html>

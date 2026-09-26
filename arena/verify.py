@@ -81,6 +81,14 @@ def verify(clip: dict, run_dir: Path, task: str, family: str) -> dict:
         }
     v = parse_json(raw)
     if not isinstance(v, dict) or not isinstance(v.get("accept"), bool):
+        # one retry: some replies wrap the JSON in prose; ask again for the object alone
+        try:
+            raw = chat(RUBRIC.format(task=task, family=family, family_def=DEFS[family]) +
+                       "\n\nReturn ONLY the JSON object, nothing before or after it.", images=[sheet], max_tokens=400)
+            v = parse_json(raw)
+        except Exception:  # noqa: BLE001
+            v = None
+    if not isinstance(v, dict) or not isinstance(v.get("accept"), bool):
         return {
             "accept": False,
             "reason": "verifier reply was not valid JSON",

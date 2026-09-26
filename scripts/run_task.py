@@ -7,6 +7,7 @@ d = Path("runs") / name
 d.mkdir(parents=True, exist_ok=True)
 log = open(d / "events.jsonl", "w")
 def emit(e):
+    e = {**e, "at": round(time.time(), 2)}
     log.write(json.dumps(e, default=str) + "\n"); log.flush()
     if e["type"] not in ("candidate", "skip", "train"):
         print(json.dumps(e, default=str)[:260], flush=True)

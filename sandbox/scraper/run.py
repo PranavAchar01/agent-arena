@@ -166,6 +166,8 @@ def search_archive(client, q, limit):
 
 def licence_ok(c) -> bool:
     lic = c.get("licence") or ""
+    if c.get("source") == "pexels" and lic == "Pexels License":
+        return True  # https://www.pexels.com/license/: free to use and modify
     if "nc" in lic.lower().replace("licenses/by-nc", "nc"):
         return False  # keep it simple and clean: no NonCommercial, no NoDerivatives
     if re.search(r"\bnd\b|-nd", lic.lower()):

@@ -23,6 +23,7 @@ from .layouts import PROBES, sample
 from .motion import shapes_from_pose, track_hands
 from .policy import N_EVAL, evaluate, train
 from .sandbox.runner import get_runner
+from .sources import pexels
 from .sim.ik import IK
 from .sim.retarget import replay
 from .sim.scene import Scene
@@ -156,6 +157,10 @@ def run(
         get_runner().run(search_job, run_dir / "search", fwd)
     found = [e for e in events if e["type"] == "candidate"]
     archive = [c for c in found if c.get("source") != "web"]
+    keyed = pexels(plan["queries"])  # optional: only when PEXELS_API_KEY is set (the key stays in the app)
+    if keyed:
+        emit({"type": "search", "source": "Pexels API (app side)", "query": ", ".join(plan["queries"][:3]), "hits": len(keyed)})
+        archive += keyed
     planted = [c for c in found if c.get("source") == "web"]
     # the agent reads the titles (as data) and picks what to download; it can only answer with line numbers
     with T("rank"):
