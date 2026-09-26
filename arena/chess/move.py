@@ -198,6 +198,9 @@ class Mover:
                     0.012,
                 )
             )
+            # the spare queen is set out in the tray first (it waits under the table), then played like any piece
+            sc._place(spare, tray_xy(mover_color, sc.captured[mover_color] + 1))
+            mujoco.mj_forward(sc.model, sc.data)
             out.append(
                 Transfer(spare, sc.piece_pos(spare)[:2], square_xy(mv.to_square))
             )

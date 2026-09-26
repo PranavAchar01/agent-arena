@@ -1,0 +1,2 @@
+Chess Set by Riley Queen, Poly Haven (https://polyhaven.com/a/chess_set), CC0 1.0.
+Meshes are used for looks only; the physics uses the collision cylinders in arena/chess/scene.py.

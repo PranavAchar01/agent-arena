@@ -51,6 +51,7 @@ def main():
                 "-",
                 "arena",
                 "vendor/so101",
+                "vendor/chess_set/mujoco",
                 "scripts/chess_render.py",
             ],
             check=True,

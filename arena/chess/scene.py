@@ -12,6 +12,7 @@ so a1 is on the arm's left, as it is for a white player sitting where the arm si
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import chess
 import mujoco
@@ -74,9 +75,47 @@ def _cyl(body, name, r, z0, z1, mat, **kw):
     )
 
 
+LOOK = (
+    Path(__file__).resolve().parents[2] / "vendor" / "chess_set" / "mujoco"
+)  # scripts/build_chess_assets.py (Poly Haven "Chess Set", CC0)
+MARBLE = (LOOK / "board.png").is_file()
+MESH = {
+    chess.PAWN: "pawn",
+    chess.KNIGHT: "knight",
+    chess.BISHOP: "bishop",
+    chess.ROOK: "rook",
+    chess.QUEEN: "queen",
+    chess.KING: "king",
+}
+
+
 def _piece_geoms(body, name: str, kind: int, mat: str, contact: dict):
-    """Low-poly Staunton silhouettes from primitives. Only the base collides; the upper parts are visual."""
+    """The grip cylinder is the only part that collides. It is drawn as a scanned Staunton mesh when the marble assets
+    are built, else as a low-poly silhouette from primitives."""
     vis = {"contype": 0, "conaffinity": 0, "mass": 0}
+    if MARBLE:
+        _cyl(
+            body,
+            f"{name}_base",
+            BASE_R,
+            0,
+            BASE_H,
+            mat,
+            mass=0.012,
+            friction=[0.9, 0.005, 0.0001],
+            condim=4,
+            group=3,
+            rgba=[0, 0, 0, 0],
+            **contact,
+        )
+        body.add_geom(
+            name=f"{name}_look",
+            type=mujoco.mjtGeom.mjGEOM_MESH,
+            meshname=f"mesh_{MESH[kind]}",
+            material=mat,
+            **vis,
+        )
+        return
     _cyl(
         body,
         f"{name}_base",
@@ -213,9 +252,18 @@ class ChessScene:
             free.remove(i)
             self._place(i, square_xy(sq))
             self.at[sq] = i
-        for i in free:  # pieces not on the board start in their tray
+        for i in free:
             c = self.pieces[i].color
-            self._place(i, tray_xy(c, self.captured[c]))
+            if self.pieces[i].body.endswith(
+                "q_spare"
+            ):  # promotion queens wait under the table until needed
+                self._place(i, np.array([0.2, 0.3 if c == chess.WHITE else -0.3]))
+                a = self.model.joint(self.pieces[i].joint).qposadr[0]
+                self.data.qpos[a + 2] = -0.74
+                continue
+            self._place(
+                i, tray_xy(c, self.captured[c])
+            )  # any other piece missing from the position starts in its tray
             self.captured[c] += 1
         mujoco.mj_forward(self.model, self.data)
 
@@ -252,17 +300,51 @@ def build() -> tuple[mujoco.MjModel, list[PieceInfo]]:
     pads = _pad_frames()
     spec = _base_spec()
     w = spec.worldbody
-    spec.add_material(name="desk", rgba=[0.83, 0.8, 0.74, 1], reflectance=0.04)
+    spec.add_material(
+        name="desk",
+        rgba=[0.16, 0.15, 0.15, 1] if MARBLE else [0.83, 0.8, 0.74, 1],
+        reflectance=0.12 if MARBLE else 0.04,
+    )
     spec.add_material(name="floor", rgba=[0.14, 0.15, 0.18, 1])
+    if MARBLE:
+        for k in MESH.values():
+            spec.add_mesh(name=f"mesh_{k}", file=str(LOOK / f"{k}.obj"))
+        for tex in ("board", "pieces_white", "pieces_black"):
+            spec.add_texture(
+                name=f"tex_{tex}",
+                type=mujoco.mjtTexture.mjTEXTURE_2D,
+                file=str(LOOK / f"{tex}.png"),
+            )
+        spec.add_material(
+            name="marble_board",
+            textures=["", "tex_board"],
+            specular=0.35,
+            shininess=0.6,
+            reflectance=0.06,
+        )
     spec.add_material(name="sq_light", rgba=[0.9, 0.86, 0.76, 1])
     spec.add_material(name="sq_dark", rgba=[0.45, 0.33, 0.24, 1])
     spec.add_material(name="frame", rgba=[0.25, 0.18, 0.13, 1])
-    spec.add_material(
-        name="white_piece", rgba=[0.95, 0.93, 0.87, 1], specular=0.3, shininess=0.4
-    )
-    spec.add_material(
-        name="black_piece", rgba=[0.12, 0.12, 0.13, 1], specular=0.4, shininess=0.5
-    )
+    if MARBLE:
+        spec.add_material(
+            name="white_piece",
+            textures=["", "tex_pieces_white"],
+            specular=0.5,
+            shininess=0.7,
+        )
+        spec.add_material(
+            name="black_piece",
+            textures=["", "tex_pieces_black"],
+            specular=0.5,
+            shininess=0.7,
+        )
+    else:
+        spec.add_material(
+            name="white_piece", rgba=[0.95, 0.93, 0.87, 1], specular=0.3, shininess=0.4
+        )
+        spec.add_material(
+            name="black_piece", rgba=[0.12, 0.12, 0.13, 1], specular=0.4, shininess=0.5
+        )
     w.add_light(
         name="key",
         pos=[0.35, -0.45, 1.2],
@@ -294,27 +376,42 @@ def build() -> tuple[mujoco.MjModel, list[PieceInfo]]:
         friction=[0.7, 0.005, 0.0001],
     )
     half = 4 * SQ
-    w.add_geom(
-        name="frame",
-        type=mujoco.mjtGeom.mjGEOM_BOX,
-        size=[half + 0.008, half + 0.008, 0.0008],
-        pos=[CENTER[0], CENTER[1], -0.0008],
-        material="frame",
-        contype=0,
-        conaffinity=0,
-    )
-    for sq in chess.SQUARES:
-        xy = square_xy(sq)
-        dark = (chess.square_file(sq) + chess.square_rank(sq)) % 2 == 0
+    if (
+        MARBLE
+    ):  # one marble board: 8x8 real tiles plus a frame, laid out to this exact grid
+        edge = half + SQ * 56 / 160
         w.add_geom(
-            name=f"sq_{chess.square_name(sq)}",
+            name="board",
             type=mujoco.mjtGeom.mjGEOM_BOX,
-            size=[SQ / 2, SQ / 2, 0.0004],
-            pos=[xy[0], xy[1], -0.0004 + 0.00005],
-            material="sq_dark" if dark else "sq_light",
+            size=[edge, edge, 0.002],
+            pos=[CENTER[0], CENTER[1], -0.0015],
+            quat=[0.7071068, 0, 0, 0.7071068],
+            material="marble_board",
             contype=0,
             conaffinity=0,
         )
+    else:
+        w.add_geom(
+            name="frame",
+            type=mujoco.mjtGeom.mjGEOM_BOX,
+            size=[half + 0.008, half + 0.008, 0.0008],
+            pos=[CENTER[0], CENTER[1], -0.0008],
+            material="frame",
+            contype=0,
+            conaffinity=0,
+        )
+        for sq in chess.SQUARES:
+            xy = square_xy(sq)
+            dark = (chess.square_file(sq) + chess.square_rank(sq)) % 2 == 0
+            w.add_geom(
+                name=f"sq_{chess.square_name(sq)}",
+                type=mujoco.mjtGeom.mjGEOM_BOX,
+                size=[SQ / 2, SQ / 2, 0.0004],
+                pos=[xy[0], xy[1], -0.0004 + 0.00005],
+                material="sq_dark" if dark else "sq_light",
+                contype=0,
+                conaffinity=0,
+            )
 
     # the same grasp contact scheme as the desk tasks: jaw meshes never touch pieces, thin finger pads do
     for g in spec.geoms:
@@ -377,7 +474,11 @@ def build() -> tuple[mujoco.MjModel, list[PieceInfo]]:
         )
         pieces.append(PieceInfo(name, f"{name}_free", color, chess.QUEEN))
 
-    tv = [0.40, -0.26, 0.22]  # three-quarter view from White's side: the arm reaches over the whole board
+    tv = [
+        0.40,
+        -0.26,
+        0.22,
+    ]  # three-quarter view from White's side: the arm reaches over the whole board
     w.add_camera(name="judge", pos=tv, xyaxes=_look_at(tv, [0.18, 0.0, 0.01]), fovy=38)
     side = [0.2, -0.36, 0.22]
     w.add_camera(
