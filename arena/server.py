@@ -28,7 +28,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -51,7 +51,7 @@ GENESIS = "0" * 64
 class NewRun(BaseModel):
     text: str = Field(min_length=8, max_length=200)
     family: str | None = Field(default=None, pattern="^(place|stack|tower)$")
-    mode: str = Field(default="robot", pattern="^(robot|chess)$")
+    mode: str = Field(default="robot", pattern="^(robot|chess|workout)$")
     robot: str = Field(
         default="so101", pattern="^(so101)$"
     )  # the only arm simulated in this prototype
@@ -170,6 +170,11 @@ def _worker():
 
                     run_chess(req.text, d, emit)
                     continue
+                if req.mode == "workout":
+                    from .workout.pipeline import run as run_workout
+
+                    run_workout(req.text, d, emit)
+                    continue
                 fam = req.family
                 if (
                     fam is None
@@ -255,7 +260,7 @@ def audit_verify(rid: str):
 
 @app.post("/api/runs")
 def start(req: NewRun):
-    rid = f"{'chess' if req.mode == 'chess' else 'live'}-{time.strftime('%H%M%S')}-{uuid.uuid4().hex[:4]}"
+    rid = f"{ {'chess': 'chess', 'workout': 'workout'}.get(req.mode, 'live') }-{time.strftime('%H%M%S')}-{uuid.uuid4().hex[:4]}"
     d = RUNS / rid
     d.mkdir(parents=True)
     first = {
@@ -319,12 +324,74 @@ def showcase_video(rid: str):
     return FileResponse(f)
 
 
+@app.get("/runs/{rid}/robot.mp4")
+def robot_video(rid: str):
+    f = RUNS / rid / "robot.mp4"
+    if not RUN_ID.match(rid) or not f.is_file():
+        raise HTTPException(404)
+    return FileResponse(f)
+
+
 @app.get("/runs/{rid}/policy.mp4")
 def policy_video(rid: str):
     f = RUNS / rid / "policy.mp4"
     if not RUN_ID.match(rid) or not f.is_file():
         raise HTTPException(404)
     return FileResponse(f)
+
+
+@app.get("/api/runs/{rid}/download")
+def download(rid: str):
+    """Every finished robot can be downloaded: its skill (trajectory or policy), sources, video and README."""
+    import io
+    import zipfile
+
+    d = RUNS / rid
+    if not RUN_ID.match(rid) or not d.is_dir():
+        raise HTTPException(404)
+    files = {
+        n: d / n
+        for n in (
+            "README.md",
+            "skill.csv",
+            "human_pose.json",
+            "sources.json",
+            "robot.mp4",
+            "policy.pt",
+            "policy.mp4",
+            "showcase.mp4",
+            "manifest.json",
+            "run.json",
+            "game.pgn",
+        )
+    }
+    summary = (
+        json.loads((d / "run.json").read_text()) if (d / "run.json").is_file() else {}
+    )
+    key = summary.get("key")
+    if key and re.fullmatch(
+        r"[0-9a-f]{16}", key
+    ):  # a chess run: the rehearsed game lives in the replay cache
+        files["moves.json"] = RUNS / "chess" / key / "moves.json"
+        files["game.mp4"] = RUNS / "chess" / key / "game.mp4"
+    files["audit.jsonl"] = d / "events.jsonl"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        if not (d / "README.md").is_file():
+            zf.writestr(
+                "README.md",
+                f"# Replay robot {rid}\n\nPrompt: {summary.get('text', '')}\n\n"
+                "policy.pt: trained SO-101 policy (state based) · moves.json/game.pgn: the rehearsed chess game · "
+                "audit.jsonl: every step of the run, hash-chained.\n",
+            )
+        for name, f in files.items():
+            if f.is_file() and f.stat().st_size < 200_000_000:
+                zf.write(f, name)
+    return Response(
+        buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="replay-{rid}.zip"'},
+    )
 
 
 @app.get("/chess/{key}/{name}")

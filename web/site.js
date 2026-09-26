@@ -13,18 +13,29 @@
   if (film) document.body.classList.add("is-film");
   const mark = (k) => { if (film) (window.__marks ||= []).push([k, Date.now()]); };
 
-  const PHASES = ["Scrape", "Verify", "Retarget", "Tune", "Test"];
-  const PHASE_OF = { queued: -1, plan: 0, sandbox_start: 0, sandbox: 0, search: 0, page: 0, download: 0, clip: 0, blocked: 0, warn: 0,
-    sandbox_destroyed: 0, vm_create: 0, vm_booting: 0, vm_ready: 0, picked: 0, done: 0, verifying: 1, verdict: 1, moves: 2, motion: 2, episodes: 2, dataset: 2,
-    train: 3, trained: 3, rollout: 4, evaluated: 4 };
+  // one card and one detail view for every kind of robot; only the labels differ
+  const KIND = {
+    robot: { phases: ["Scrape", "Verify", "Retarget", "Tune", "Test"], labels: ["Scraping", "Verifying", "Retargeting", "Tuning", "Testing"], nums: ["clips", "episodes", "success"] },
+    workout: { phases: ["Scrape", "Segment", "Verify", "Copy 1:1", "Ready"], labels: ["Scraping", "Segmenting", "Verifying", "Copying 1:1", "Ready"], nums: ["videos", "reps found", "elbow error"] },
+    chess: { phases: ["Search", "Scrape", "Check", "Rehearse", "Ready"], labels: ["Searching", "Scraping", "Checking", "Rehearsing", "Ready"], nums: ["moves", "pick-and-places", "worst"] },
+  };
+  const PHASE_OF = {
+    robot: { queued: -1, plan: 0, sandbox_start: 0, sandbox: 0, search: 0, page: 0, download: 0, clip: 0, blocked: 0, warn: 0,
+      sandbox_destroyed: 0, vm_create: 0, vm_booting: 0, vm_ready: 0, picked: 0, verifying: 1, verdict: 1, moves: 2, motion: 2, episodes: 2, dataset: 2,
+      train: 3, trained: 3, rollout: 4, evaluated: 4 },
+    workout: { plan: 0, vm_create: 0, sandbox_start: 0, search: 0, candidate: 0, picked: 0, download: 0, clip: 0, clips: 1, pose_start: 1, pose: 1, pose_done: 1,
+      verdict: 2, chosen: 2, robot_start: 3, robot: 3 },
+    chess: { plan: 0, vm_create: 0, search: 0, picked: 1, page: 1, pgn_candidate: 1, validate: 2, game: 2, replay: 3 },
+  };
   const boxes = [];
   let robot = "so101";
 
   // ---------- composer ----------
   const input = $("#prompt");
   let family = null;
-  document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => { input.value = c.dataset.text; family = c.dataset.family; input.focus(); }));
-  input.addEventListener("input", () => { family = null; });
+  let mode = null;
+  document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => { input.value = c.dataset.text; family = c.dataset.family || null; mode = c.dataset.mode || null; input.focus(); }));
+  input.addEventListener("input", () => { family = null; mode = null; });
   const list = $("#robot-list");
   $("#robot-btn").addEventListener("click", () => { list.hidden = !list.hidden; $("#robot-btn").setAttribute("aria-expanded", String(!list.hidden)); });
   list.addEventListener("click", (e) => {
@@ -32,60 +43,135 @@
     robot = o.dataset.robot; $("#robot-label").textContent = o.querySelector("b").textContent; list.hidden = true;
   });
   document.addEventListener("click", (e) => { if (!e.target.closest(".composer")) list.hidden = true; });
+  const modeOf = (text) => mode || (/workout|exercise|curl|dumbbell|gym|lift|reps?\b/i.test(text) ? "workout"
+    : /chess|\bvs\.?\b|kasparov|fischer|game \d/i.test(text) ? "chess" : "robot");
 
   const submit = (inp) => async (ev) => {
     ev.preventDefault();
     const text = inp.value.trim() || input.placeholder;
-    const r = await fetch("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: `I want to train a robot to ${text}`, family, robot }) });
+    const kind = modeOf(text);
+    const body = kind === "robot" ? { text: `I want to train a robot to ${text}`, family, robot } : { text, mode: kind, robot };
+    const r = await fetch("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     if (!r.ok) return;
     const { id } = await r.json();
-    const box = addBox(id, text);
-    inp.value = ""; family = null;
+    const box = addBox(id, text, kind);
+    inp.value = ""; family = null; mode = null;
+    $("#fleet").scrollIntoView({ behavior: "smooth", block: "start" });
     const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/runs/${id}/ws`);
     ws.onmessage = (m) => box.handle(JSON.parse(m.data));
   };
   $("#composer").addEventListener("submit", submit(input));
   $("#composer2").addEventListener("submit", submit($("#prompt2")));
 
-  // ---------- a box ----------
-  function addBox(id, task) {
+  // ---------- a box (identical for every kind) ----------
+  function addBox(id, task, kind = "robot") {
     const fleet = $("#fleet");
     fleet.hidden = false;
     const n = boxes.length + 1;
-    const root = el("article", "box");
+    const K = KIND[kind];
+    const root = el("article", `box kind-${kind}`);
     root.innerHTML = `
       <header class="box-head">
         <div><div class="box-id">ROBOT ${String(n).padStart(2, "0")} · SO-101 · <span class="sbx">queued</span></div>
         <div class="box-task">${esc(task)}</div></div>
         <div class="head-r"><span class="status wait"><i></i><span>Queued</span></span>
-        <button type="button" class="kill" title="Destroy this robot's sandbox now">Kill</button></div>
+        <button type="button" class="kill" title="Destroy this robot's sandbox now">Kill</button>
+        <a class="dl" href="/api/runs/${esc(id)}/download" download title="Download this robot's skill">Download</a></div>
       </header>
       <div class="screen">
         <div class="term"><div class="term-bar"><i></i><i></i><i></i><span class="term-title">waiting for a sandbox</span></div>
           <div class="term-body"></div></div>
+        <div class="tiles"></div>
         <video muted loop playsinline preload="none"></video>
         <div class="deploy">Ready to deploy <small class="deploy-rate"></small></div>
       </div>
       <footer class="box-foot">
-        <div class="phases">${PHASES.map(() => "<i></i>").join("")}</div>
-        <div class="phase-names">${PHASES.map((p) => `<span>${p}</span>`).join("")}</div>
-        <div class="nums"><span>clips <b class="n-clips">0</b></span><span>episodes <b class="n-eps">0</b></span><span>success <b class="n-succ">–</b></span></div>
+        <div class="phases">${K.phases.map(() => "<i></i>").join("")}</div>
+        <div class="phase-names">${K.phases.map((p) => `<span>${p}</span>`).join("")}</div>
+        <div class="nums">${K.nums.map((l, i) => `<span>${l} <b data-n="${i}">–</b></span>`).join("")}</div>
       </footer>`;
     $("#grid").prepend(root);
-    const box = new Box(id, task, n, root);
+    const box = new Box(id, task, n, root, kind);
     boxes.push(box);
     root.addEventListener("click", () => openSheet(box));
     $(".kill", root).addEventListener("click", (ev) => { ev.stopPropagation(); killBox(box); });
+    $(".dl", root).addEventListener("click", (ev) => ev.stopPropagation());
     $("#fleet-count").textContent = `${boxes.length} robot${boxes.length > 1 ? "s" : ""} · one sandbox each`;
     return box;
   }
 
-  class Box {
-    constructor(id, task, n, root) {
-      Object.assign(this, { id, task, n, root, events: [], log: [], phase: -1, mode: "scrape", clips: 0, verified: 0, eps: 0, rollouts: [] });
-      this.body = $(".term-body", root);
+  // a scraped video with MediaPipe's skeleton drawn on it, frame by frame as the pose model reaches it
+  const BONES = [[1, 2], [1, 3], [3, 5], [2, 4], [4, 6], [1, 7], [2, 8], [7, 8], [7, 9], [9, 11], [8, 10], [10, 12], [0, 1], [0, 2]];
+  class Tile {
+    constructor(rid, clip, big = false) {
+      Object.assign(this, { rid, clip, frames: [], last: 0, done: false });
+      this.root = el("div", `tile${big ? " big" : ""}`);
+      this.root.innerHTML = `<video muted playsinline preload="auto" src="/runs/${esc(rid)}/clips/${esc(clip.id)}.mp4"></video><canvas></canvas>
+        <b class="tile-badge"></b><div class="tile-bar"><i></i></div><span class="tile-cap">${esc(short(clip.title.replace(/\.(webm|ogv|ogg|mp4)$/i, ""), 44))}</span>`;
+      this.v = $("video", this.root);
+      this.c = $("canvas", this.root);
     }
+    rect() {
+      const W = this.root.clientWidth, H = this.root.clientHeight;
+      const vw = this.v.videoWidth || 16, vh = this.v.videoHeight || 9;
+      const s = Math.min(W / vw, H / vh);
+      return [(W - vw * s) / 2, (H - vh * s) / 2, vw * s, vh * s, W, H];
+    }
+    draw(lm) {
+      const [ox, oy, w, h, W, H] = this.rect();
+      if (this.c.width !== W) { this.c.width = W; this.c.height = H; }
+      const g = this.c.getContext("2d");
+      g.clearRect(0, 0, W, H);
+      if (!lm) return;
+      g.lineWidth = Math.max(2, W / 120); g.lineCap = "round";
+      const P = (k) => [ox + lm[k][0] * w, oy + lm[k][1] * h];
+      for (const [a, b] of BONES) {
+        if (lm[a][2] < 0.4 || lm[b][2] < 0.4) continue;
+        const arm = [3, 4, 5, 6].includes(a) || [3, 4, 5, 6].includes(b);
+        g.strokeStyle = arm ? "rgba(241,207,138,0.95)" : "rgba(143,211,166,0.85)";
+        g.beginPath(); g.moveTo(...P(a)); g.lineTo(...P(b)); g.stroke();
+      }
+      g.fillStyle = "#fff";
+      for (const k of [3, 4, 5, 6]) if (lm[k][2] >= 0.4) { const [x, y] = P(k); g.beginPath(); g.arc(x, y, Math.max(2, W / 90), 0, 7); g.fill(); }
+    }
+    update(e) {
+      this.frames.push(e);
+      $(".tile-bar i", this.root).style.width = `${Math.min(100, (100 * (e.i + 1)) / Math.max(1, e.n))}%`;
+      this.root.classList.add("is-live");
+      const now = performance.now();
+      if (!this.done && now - this.last > 90) { this.last = now; try { this.v.currentTime = e.t; } catch {} this.draw(e.lm); }
+    }
+    finish(e) {
+      this.done = true;
+      this.root.classList.remove("is-live");
+      this.root.classList.add(e.ok ? "ok" : "no");
+      $(".tile-badge", this.root).textContent = e.ok ? `${e.reps} reps` : e.reps ? `${e.reps} rep` : "no reps";
+      $(".tile-bar i", this.root).style.width = "100%";
+      this.loop();
+    }
+    loop(window) {
+      this.v.loop = true;
+      this.v.play().catch(() => {});
+      const tick = () => {
+        if (!this.root.isConnected) return;
+        const t = this.v.currentTime;
+        if (window && (t < window[0] || t > window[1])) { try { this.v.currentTime = window[0]; } catch {} }
+        let best = null;
+        for (const f of this.frames) { if (f.t <= t) best = f; else break; }
+        this.draw(best && best.lm);
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+  }
+
+  class Box {
+    constructor(id, task, n, root, kind) {
+      Object.assign(this, { id, task, n, root, kind, events: [], log: [], phase: -1, mode: "scrape", clips: 0, verified: 0, eps: 0, rollouts: [], tiles: {} });
+      this.body = $(".term-body", root);
+      this.prompt = kind === "robot" ? `I want to train a robot to ${task}` : task;
+    }
+    num(i, v) { const b = $(`[data-n="${i}"]`, this.root); if (b) b.textContent = v; }
     line(text, cls = "") {
       this.log.push([this.mode, text, cls]);
       const d = el("div", cls, esc(text));
@@ -101,8 +187,8 @@
       if (p <= this.phase) return;
       this.phase = p;
       $$(".phases i", this.root).forEach((i, k) => { i.className = k < p ? "done" : k === p ? "on" : ""; });
-      this.setStatus(["Scraping", "Verifying", "Retargeting", "Tuning", "Testing"][p]);
-      if (p >= 2 && this.mode !== "tune") {
+      this.setStatus(KIND[this.kind].labels[p]);
+      if (this.kind === "robot" && p >= 2 && this.mode !== "tune") {
         this.mode = "tune";
         this.body.innerHTML = "";
         $(".term-title", this.root).textContent = `tune · so101-${this.family || "policy"} · cpu · MediaPipe → MuJoCo → PyTorch`;
@@ -110,33 +196,67 @@
     }
     handle(e) {
       this.events.push(e);
-      const p = PHASE_OF[e.type];
+      const p = (PHASE_OF[this.kind] || {})[e.type];
       if (p !== undefined && p >= 0) this.setPhase(p);
-      const f = FORMAT[e.type];
+      const f = (this.kind === "robot" ? FORMAT : WFORMAT)[e.type];
       if (f) { const out = f(e, this); if (out) (Array.isArray(out[0]) ? out : [out]).forEach(([t, c]) => this.line(t, c)); }
+      if (this.kind === "workout") this.workout(e);
       if (e.type === "blocked") mark("blocked");
-      if (e.type === "verdict" && e.accept) mark("verified");
       if (e.type === "error") { this.setStatus("Failed", "no"); this.line(`error: ${e.message}`, "t-no"); this.ended(); }
       if (e.type === "killed") { this.setStatus("Killed", "no"); this.ended(); }
       if (e.type === "done" && e.timings_s) this.finish();
     }
+    workout(e) {
+      const screen = $(".screen", this.root);
+      if (e.type === "clips") {
+        this.clipList = e.clips;
+        this.num(0, e.clips.length);
+        const grid = $(".tiles", this.root);
+        grid.innerHTML = "";
+        for (const c of e.clips) { const t = new Tile(this.id, c); this.tiles[c.id] = t; grid.appendChild(t.root); }
+        screen.classList.add("is-tiles");
+        $(".term-title", this.root).textContent = "MediaPipe Pose · segmenting every video";
+      }
+      if (e.type === "pose" && this.tiles[e.id]) this.tiles[e.id].update(e);
+      if (e.type === "pose_done" && this.tiles[e.id]) {
+        this.tiles[e.id].finish(e);
+        this.tiles[e.id].result = e;
+        this.num(1, Object.values(this.tiles).reduce((s, t) => s + (t.result ? t.result.reps : 0), 0));
+      }
+      if (e.type === "chosen" && this.tiles[e.id]) { this.tiles[e.id].root.classList.add("chosen"); this.chosen = e; }
+      if (e.type === "robot") { this.robot = e; this.num(2, `${e.elbow_tracking_rms_deg}°`); }
+    }
     ended() { this.root.classList.add("is-ended"); }
-    finish() {
+    showVideo(src, fallback) {
+      const v = $("video", this.root);
+      v.src = src;
+      if (fallback) v.onerror = () => { v.src = fallback; };
+      const sc = $(".screen", this.root);
+      sc.classList.remove("is-tiles");
+      sc.classList.add("is-video");
+      v.play().catch(() => {});
+    }
+    ready(rate) {
       this.ended();
       $$(".phases i", this.root).forEach((i) => { i.className = "done"; });
-      const ev = this.events.find((e) => e.type === "evaluated");
-      if (!ev || !ev.n) { this.setStatus("Not enough data", "no"); return; }
-      this.success = `${ev.success}/${ev.n}`;
-      $(".n-succ", this.root).textContent = this.success;
-      $(".deploy-rate", this.root).textContent = `${this.success} unseen layouts`;
+      $(".deploy-rate", this.root).textContent = rate;
       this.setStatus("Ready to deploy", "ok");
       mark("ready");
       this.root.classList.add("is-ready");
-      const v = $("video", this.root);
-      v.src = `/runs/${this.id}/showcase.mp4`;
-      v.onerror = () => { v.src = `/runs/${this.id}/policy.mp4`; };
-      $(".screen", this.root).classList.add("is-video");
-      v.play().catch(() => {});
+    }
+    finish() {
+      if (this.kind === "workout") {
+        if (!this.robot) { this.setStatus("Not enough data", "no"); this.ended(); return; }
+        this.ready(`${this.chosen ? this.chosen.reps : ""} reps copied 1:1`);
+        this.showVideo(`/runs/${this.id}/robot.mp4`);
+        return;
+      }
+      const ev = this.events.find((x) => x.type === "evaluated");
+      if (!ev || !ev.n) { this.setStatus("Not enough data", "no"); this.ended(); return; }
+      this.success = `${ev.success}/${ev.n}`;
+      this.num(2, this.success);
+      this.ready(`${this.success} unseen layouts`);
+      this.showVideo(`/runs/${this.id}/showcase.mp4`, `/runs/${this.id}/policy.mp4`);
     }
   }
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -164,193 +284,172 @@
     page: (e) => { let u = e.url; try { u = new URL(e.url).pathname; } catch {} return [`GET ${u} → ${e.videos} video link(s), ${e.scripts_ignored} script(s) not run`, ""]; },
     blocked: (e) => [`✗ BLOCKED ${e.reason}`, "t-no"],
     download: (e) => [`↓ ${short(e.title, 52)}  [${e.licence}]`, ""],
-    clip: (e, b) => { b.clips += 1; $(".n-clips", b.root).textContent = b.clips; return [`✓ kept ${short(e.title, 44)} · ${e.seconds}s → h264 360p`, "t-ok"]; },
+    clip: (e, b) => { b.clips += 1; b.num(0, b.clips); return [`✓ kept ${short(e.title, 44)} · ${e.seconds}s → h264 360p`, "t-ok"]; },
     warn: (e) => [`· ${e.message}`, "t-dim"],
     sandbox_destroyed: (e) => [`$ ${e.container} destroyed after ${e.seconds}s`, "t-sys"],
     picked: (e) => (e.of ? [`agent> picked ${e.n} of ${e.of} results`, "t-sys"] : null),
     verifying: (e) => [`vlm> checking ${short(e.title, 50)}`, "t-dim"],
-    verdict: (e, b) => { if (e.accept) { b.verified += 1; $(".n-clips", b.root).textContent = `${b.verified}/${b.clips}`; }
+    verdict: (e, b) => { if (e.accept) { b.verified += 1; b.num(0, `${b.verified}/${b.clips}`); }
       return [`vlm> ${e.accept ? "✓ verified" : "✗ rejected"}: ${short(e.reason, 70)}`, e.accept ? "t-ok" : "t-no"]; },
     moves: (e) => [`mediapipe> ${e.found} clean hand moves in ${e.id} (${e.rejected} too small)`, "t-info"],
     motion: (e) => [`mujoco> move ${e.move.split("@")[1] || ""}: ${e.probe.filter(Boolean).length}/3 probe layouts · ${e.ok ? "kept" : "dropped"} · lift ${e.max_lift}`, e.ok ? "t-ok" : "t-no"],
-    episodes: (e, b) => { b.eps += e.kept; $(".n-eps", b.root).textContent = b.eps; return [`dataset> +${e.kept}/${e.tried} physics-checked episodes`, ""]; },
-    dataset: (e, b) => { $(".n-eps", b.root).textContent = e.episodes; return [`dataset> ${e.episodes} episodes · ${e.frames.toLocaleString()} frames · ${(e.bytes / 1e6).toFixed(1)} MB`, "t-sys"]; },
+    episodes: (e, b) => { b.eps += e.kept; b.num(1, b.eps); return [`dataset> +${e.kept}/${e.tried} physics-checked episodes`, ""]; },
+    dataset: (e, b) => { b.num(1, e.episodes); return [`dataset> ${e.episodes} episodes · ${e.frames.toLocaleString()} frames · ${(e.bytes / 1e6).toFixed(1)} MB`, "t-sys"]; },
     train: (e) => [`train> step ${String(e.iter).padStart(4)}/${e.iters}  loss ${e.loss.toFixed(4)}${e.lr ? `  lr ${e.lr.toExponential(1)}` : ""}${e.samples_per_s ? `  ${(e.samples_per_s / 1000).toFixed(1)}k samples/s` : ""}`, ""],
     trained: (e) => [`train> done · ${e.params.toLocaleString()} params · ${e.train_seconds}s on CPU · ${(e.bytes / 1024).toFixed(0)} KB`, "t-ok"],
     rollout: (e, b) => { b.rollouts.push(e.ok); return [`eval> unseen layout ${String(e.i + 1).padStart(2, "0")}/${e.n} ${e.ok ? "✓ success" : "✗ miss"}`, e.ok ? "t-ok" : "t-no"]; },
     evaluated: (e) => (e.n ? [`eval> ${e.success}/${e.n} unseen layouts · policy.pt ready to deploy`, "t-sys"] : [`eval> ${e.reason}`, "t-no"]),
   };
 
-  // ---------- a chess box (a recorded run of the chess agent) ----------
-  const CFORMAT = {
-    plan: (e) => [`agent> ${e.white} vs ${e.black}, ${e.year} ${e.game ? "game " + e.game : ""}`, "t-sys"],
-    vm_create: (e) => [`vultr> VM ${e.instance.slice(0, 8)} · ${e.plan} · ${e.region}`, "t-sys"],
-    sandbox_start: (e) => [`$ docker run --rm --read-only --cap-drop ALL ${e.container}`, "t-sys"],
-    search: (e) => [`scrapling> ${e.source}: "${short(e.query, 36)}" → ${e.hits}`, "t-info"],
-    picked: (e) => [`agent> picked ${e.n} of ${e.of} articles`, "t-sys"],
+  // ---------- terminal lines for workout and chess runs ----------
+  const WFORMAT = {
+    plan: (e) => [`agent> ${e.exercise || `${e.white} vs ${e.black}, ${e.year}`}${e.why ? ": " + e.why : ""}`, "t-sys"],
+    vm_create: (e) => [`vultr> VM ${e.instance.slice(0, 8)} · ${e.plan} · ${e.region}${e.warm ? " · pre-warmed" : ""}`, "t-sys"],
+    vm_destroyed: (e) => [`vultr> VM deleted after ${e.seconds}s`, "t-sys"],
+    sandbox_start: (e, b) => { if (e.host && e.host !== "local") $(".sbx", b.root).textContent = e.host.split(" · ")[0]; return [`$ docker run --rm --read-only --cap-drop ALL ${e.container}`, "t-sys"]; },
+    sandbox: (e) => [`  uid ${e.user} · ${e.env_secrets} secrets in env`, "t-dim"],
+    search: (e) => [`scrapling> ${short(e.source, 30)}: "${short(e.query, 30)}" → ${e.hits}`, "t-info"],
+    picked: (e) => [`agent> picked ${e.n} of ${e.of}`, "t-sys"],
+    blocked: (e) => [`✗ BLOCKED ${short(e.reason, 60)}`, "t-no"],
+    download: (e) => [`↓ ${short(e.title, 52)} [${short(e.licence, 20)}]`, ""],
+    clip: (e) => [`✓ ${short(e.title, 44)} · ${e.seconds}s → h264 360p`, "t-ok"],
+    clips: (e) => [`mediapipe> segmenting ${e.clips.length} videos`, "t-sys"],
+    pose_done: (e, b) => [`mediapipe> ${short((b.tiles[e.id] || {}).clip?.title || e.id, 36)}: ${e.reps} reps, ${Math.round(e.tracked * 100)}% tracked`, e.ok ? "t-ok" : "t-dim"],
+    verdict: (e) => [`vlm> ${e.accept ? "✓" : "✗"} ${short(e.reason, 64)}`, e.accept ? "t-ok" : "t-no"],
+    chosen: (e) => [`agent> copying ${e.reps} reps from ${short(e.title, 40)}`, "t-sys"],
+    robot_start: (e) => [`mujoco> ${e.message}`, "t-info"],
+    robot: (e) => [`mujoco> ${e.held_through_curl ? "held the dumbbell ✓" : "dropped it ✗"} · elbow within ${e.elbow_tracking_rms_deg}° of the human`, e.ok ? "t-ok" : "t-no"],
     page: (e) => [`scrapling> ${short(e.title || e.url, 40)} → ${e.move_lists} move lists`, "t-info"],
     validate: (e) => [`python-chess> ${e.ok ? `${e.plies} legal moves ✓` : e.reason}`, e.ok ? "t-ok" : "t-no"],
     game: (e) => [`game> ${e.plies} moves found and checked`, "t-ok"],
     replay: (e) => [`mujoco> ${e.transfers} pick-and-places, each rehearsed in physics ✓`, "t-ok"],
-    vm_destroyed: (e) => [`vultr> VM deleted after ${e.seconds}s`, "t-sys"],
+    warn: (e) => [`· ${e.message}`, "t-dim"],
+    done: (e) => (e.timings_s ? [`done in ${e.timings_s.total}s`, "t-dim"] : null),
   };
+
+  // ---------- a chess box: the same card, fed from a recorded chess run ----------
   async function addChessBox(rid) {
     const d = await fetch(`/api/runs/${rid}`).then((r) => r.json());
-    const text = d.events[0]?.text || "";
-    const box = addBox(rid, text);
-    box.kind = "chess";
-    box.prompt = text;
+    const box = addBox(rid, d.events[0]?.text || "", "chess");
     box.mode = "tune";
     for (const e of d.events) {
       box.events.push(e);
-      const f = CFORMAT[e.type];
-      const out = f && f(e);
+      const f = WFORMAT[e.type];
+      const out = f && f(e, box);
       if (out) box.line(...out);
     }
     const rep = d.events.find((e) => e.type === "replay");
-    const vm = d.events.find((e) => e.type === "vm_create");
     box.replay = rep;
     $(".term-title", box.root).textContent = "chess agent · Scrapling · python-chess · MuJoCo";
+    const vm = d.events.find((e) => e.type === "vm_create");
     if (vm) $(".sbx", box.root).textContent = `vultr ${vm.instance.slice(0, 8)}`;
-    $$(".phases i", box.root).forEach((i) => { i.className = "done"; });
-    $(".nums", box.root).innerHTML = `<span>moves <b>${rep.plies}</b></span><span>pick-and-places <b>${rep.transfers}</b></span><span>worst <b>${rep.max_err_mm} mm</b></span>`;
-    $(".deploy-rate", box.root).textContent = `${rep.plies} moves, both sides`;
-    box.setStatus("Ready to deploy", "ok");
-    box.ended();
-    box.root.classList.add("is-ready");
-    const v = $("video", box.root);
-    v.src = rep.video;
-    $(".screen", box.root).classList.add("is-video");
-    v.play().catch(() => {});
+    if (!rep) { box.setStatus("Not rehearsed", "no"); return box; }
+    box.num(0, rep.plies); box.num(1, rep.transfers); box.num(2, `${rep.max_err_mm} mm`);
+    box.ready(`${rep.plies} moves, both sides`);
+    box.showVideo(rep.video);
     return box;
   }
 
-  // ---------- technical overview ----------
-  const promptCard = (text) => `<section class="card span prompt-card"><h3>Prompt</h3><p class="prompt-text">“${esc(text)}”</p></section>`;
-  function openChessSheet(box) {
-    const r = box.replay;
-    $("#sheet-kicker").textContent = `ROBOT ${String(box.n).padStart(2, "0")} · SO-101 · simulated in MuJoCo`;
-    $("#sheet-title").textContent = "Deep Blue vs. Kasparov, 1997, Game 6";
-    $("#sheet-body").innerHTML = `
-      ${promptCard(box.prompt)}
-      <section class="card span">
-        <h3>The robot plays both sides</h3>
-        <video class="hero-video" id="chess-video" src="${esc(r.video)}" autoplay muted loop playsinline controls></video>
-        <ol class="c-moves" id="sheet-moves">${r.moves.map((m, i) => `<li>${i % 2 === 0 ? `<b>${i / 2 + 1}.</b>` : ""}${esc(m.san)}</li>`).join("")}</ol>
-        <p class="note">MuJoCo physics (Google DeepMind) with the official SO-101 model and its STS3215 servo gains. ${Math.round(r.sim_s)} s of robot time, shown at ${r.speed.toFixed(1)}×.</p>
-      </section>
-      <section class="card">
-        <h3>At a glance</h3>
-        <dl class="kv">
-          <div><dd>${r.plies}</dd><dt>moves, both colours</dt></div>
-          <div><dd>${r.captures}</dd><dt>captures, pieces to the tray</dt></div>
-          <div><dd>${r.transfers}</dd><dt>pick-and-places, each rehearsed first</dt></div>
-          <div><dd>${r.max_err_mm} mm</dd><dt>worst placement off a square's centre</dt></div>
-        </dl>
-      </section>
-      <section class="card">
-        <h3>How it ran</h3>
-        <ol class="steps">
-          <li><b>Plan</b><span style="grid-column:2/-1">the agent turned the prompt into a search</span></li>
-          <li><b>Scrape</b><span style="grid-column:2/-1">Scrapling on a throwaway Vultr VM, no secrets inside</span></li>
-          <li><b>Check</b><span style="grid-column:2/-1">python-chess re-read every move: ${r.plies} legal</span></li>
-          <li><b>Rehearse</b><span style="grid-column:2/-1">every grasp simulated and checked before it is played</span></li>
-        </ol>
-      </section>
-      <section class="card span">
-        <h3>Full log</h3>
-        <div class="log">${box.log.map(([, text, cls]) => `<div class="${cls}">${esc(text)}</div>`).join("")}</div>
-      </section>`;
-    const v = $("#chess-video");
+  // ---------- technical overview: one template for every robot ----------
+  const kv = (items) => `<dl class="kv">${items.map(([v, l]) => `<div><dd>${esc(v)}</dd><dt>${esc(l)}</dt></div>`).join("")}</dl>`;
+  const stepList = (items) => `<ol class="steps">${items.map(([a, b, c]) => `<li><b>${esc(a)}</b><code>${c != null ? esc(c) + " s" : ""}</code><span style="grid-column:2/-1">${esc(b)}</span></li>`).join("")}</ol>`;
+  const rows = (items) => `<div class="src">${items.map((r) => `<div><em class="${r.ok ? "ok" : "no"}">${esc(r.tag)}</em><span>${esc(short(r.title, 90))}<small>${esc(r.meta || "")}</small></span></div>`).join("") || "<p class='note'>Nothing yet.</p>"}</div>`;
+
+  function sheetModel(box, summary) {
+    const ev = (t) => box.events.filter((e) => e.type === t);
+    const vmEv = ev("vm_create")[0];
+    const host = vmEv ? `Vultr VM ${vmEv.instance.slice(0, 8)} · ${vmEv.plan}` : "local Docker sandbox";
+    if (box.kind === "chess") {
+      const r = box.replay || {};
+      return {
+        title: "Deep Blue vs. Kasparov, 1997, Game 6",
+        media: r.video ? `<video class="hero-video" id="sheet-video" src="${esc(r.video)}" autoplay muted loop playsinline controls></video>
+          <ol class="c-moves" id="sheet-moves">${(r.moves || []).map((m, i) => `<li>${i % 2 === 0 ? `<b>${i / 2 + 1}.</b>` : ""}${esc(m.san)}</li>`).join("")}</ol>` : "<p class='note'>Not rehearsed yet.</p>",
+        note: `MuJoCo physics (Google DeepMind), official SO-101 model and servo gains. ${Math.round(r.sim_s || 0)} s of robot time shown at ${(r.speed || 1).toFixed(1)}×.`,
+        glance: [[r.plies, "moves, both colours"], [r.captures, "captures, pieces to the tray"], [r.transfers, "pick-and-places, each rehearsed first"],
+          [`${r.max_err_mm} mm`, "worst placement off a square's centre"], [ev("page").length, "pages read by the scraper"], [host.split(" · ")[0], "where the scraping ran"]],
+        steps: [["Plan", "the agent turned the prompt into a search"], ["Scrape", `Scrapling in a throwaway sandbox (${host})`],
+          ["Check", `python-chess re-read every move: ${r.plies} legal`], ["Rehearse", "every grasp simulated and checked before it is played"]],
+        sources: rows(ev("page").map((e) => ({ ok: e.move_lists > 0, tag: e.move_lists > 0 ? "used" : "read", title: e.title || e.url, meta: `${e.move_lists} move lists · Wikipedia, CC BY-SA` }))),
+        onOpen: () => syncMoves(r),
+      };
+    }
+    if (box.kind === "workout") {
+      const rob = box.robot || {};
+      const ch = box.chosen;
+      const results = Object.values(box.tiles).filter((t) => t.result);
+      return {
+        title: "Dumbbell biceps curl, copied 1:1",
+        media: ch ? `<div class="twoup"><figure><div id="human-slot"></div><figcaption>Human · MediaPipe Pose · ${esc(short(box.tiles[ch.id].clip.title, 40))}</figcaption></figure>
+          <figure><video class="hero-video" src="/runs/${esc(box.id)}/robot.mp4" autoplay muted loop playsinline controls></video><figcaption>SO-101 · same elbow angle, 1:1 · MuJoCo physics</figcaption></figure></div>` : "<p class='note'>Still running.</p>",
+        note: "The person's elbow angle drives the robot's elbow joint degree for degree; shoulder and wrist hold still, as in a strict curl. The arm picks the dumbbell up, curls it, and sets it back down.",
+        glance: [[Object.keys(box.tiles).length, "openly licensed videos scraped"], [results.reduce((s2, t) => s2 + t.result.reps, 0), "reps found by MediaPipe"],
+          [ch ? ch.reps : "–", "reps copied by the robot"], [rob.elbow_tracking_rms_deg != null ? `${rob.elbow_tracking_rms_deg}°` : "–", "robot elbow vs human (RMS)"],
+          [rob.max_slip_mm != null ? `${rob.max_slip_mm} mm` : "–", "dumbbell slip in the grip"], [host.split(" · ")[0], "where the scraping ran"]],
+        steps: [["Plan", "the agent chose an exercise the arm can copy 1:1"], ["Scrape", `Scrapling in a throwaway sandbox (${host})`],
+          ["Segment", "MediaPipe Pose on every video: joints, elbow angle, reps"], ["Verify", "a VLM confirmed the best clip is a real curl"],
+          ["Copy", "the SO-101 picks up the dumbbell and follows the elbow 1:1"]],
+        sources: `<div class="tiles sheet-tiles" id="sheet-tiles"></div>`,
+        onOpen: () => {
+          const grid = $("#sheet-tiles");
+          for (const t of Object.values(box.tiles)) {
+            const nt = new Tile(box.id, t.clip); nt.frames = t.frames; grid.appendChild(nt.root);
+            if (t.result) { nt.finish(t.result); if (ch && ch.id === t.clip.id) nt.root.classList.add("chosen"); }
+          }
+          if (ch) { const ht = new Tile(box.id, box.tiles[ch.id].clip, true); ht.frames = box.tiles[ch.id].frames; $("#human-slot").appendChild(ht.root); ht.done = true; ht.loop(ch.window); }
+        },
+      };
+    }
+    const s = summary || {};
+    const pol = s.policy || {};
+    const t = s.timings_s || {};
+    const verdicts = ev("verdict");
+    return {
+      title: box.task,
+      media: pol.eval_n ? `<video class="hero-video" src="/runs/${esc(box.id)}/showcase.mp4" autoplay muted loop playsinline controls></video>` : "<p class='note'>Still running.</p>",
+      note: `Sim-tested: ${pol.eval_n ? `${pol.eval_success}/${pol.eval_n}` : "–"} unseen layouts in MuJoCo (Google DeepMind), official SO-101 model. The policy reads joint angles and object positions.`,
+      glance: [[ev("clip").length, "clips pulled in the sandbox"], [`${verdicts.filter((v) => v.accept).length}/${verdicts.length}`, "verified by the VLM"],
+        [ev("blocked").length, "hostile or junk fetches blocked"], [(s.dataset || {}).episodes ?? box.eps, "physics-checked episodes"],
+        [pol.params ? pol.params.toLocaleString() : "–", "policy parameters"], [pol.eval_n ? `${pol.eval_success}/${pol.eval_n}` : "–", "unseen layouts solved"]],
+      steps: [["Plan", "the agent picked the task and the people to learn from", t.plan], ["Scrape", `throwaway sandboxes fetch and re-encode openly licensed video (${host})`, t.scrape],
+        ["Verify", "a VLM checks every clip", t.verify], ["Retarget", "MediaPipe hand track → SO-101 path → MuJoCo physics gate", t.motion],
+        ["Tune", "a small policy trained on the CPU", t.train], ["Test", "fixed layouts the policy never saw", t.evaluate]],
+      sources: rows(verdicts.map((v) => ({ ok: v.accept, tag: v.accept ? "used" : "rejected", title: v.title, meta: `${v.licence || ""} · ${v.reason || ""}` }))),
+    };
+  }
+
+  function syncMoves(r) {
+    const v = $("#sheet-video");
+    if (!v || !r.moves) return;
     v.addEventListener("timeupdate", () => {
       let k = -1;
       r.moves.forEach((m, i) => { if (v.currentTime >= m.start_s) k = i; });
       $$("#sheet-moves li").forEach((li, i) => { li.className = i < k ? "done" : i === k ? "on" : ""; });
     });
-    $("#sheet").hidden = false;
-    document.body.classList.add("is-locked");
   }
 
   async function openSheet(box) {
-    if (box.kind === "chess") return openChessSheet(box);
-    const sheet = $("#sheet");
-    const d = await fetch(`/api/runs/${box.id}`).then((r) => r.json()).catch(() => ({}));
-    const s = d.summary || {};
-    const ev = (t) => box.events.filter((e) => e.type === t);
-    const pol = s.policy || {};
-    const ready = pol.eval_n ? `${pol.eval_success}/${pol.eval_n}` : null;
-    $("#sheet-kicker").textContent = `ROBOT ${String(box.n).padStart(2, "0")} · SO-101 · ${box.id}`;
-    $("#sheet-title").textContent = box.task;
-    const verdicts = ev("verdict");
-    const moves = ev("motion");
-    const t = s.timings_s || {};
-    const rolls = (pol.eval || box.rollouts);
-    const vm = ev("vm_create")[0];
-    const gone = ev("vm_destroyed")[0];
-    const steps = [
-      ["Plan", "the agent picks the task family and the people to learn from", t.plan],
-      ["Sandbox", "throwaway containers fetch and re-encode openly licensed video; no secrets inside", t.scrape],
-      ["Verify", "a VLM checks every clip: real person, hand, object, the right motion", t.verify],
-      ["Retarget", "MediaPipe hand track → SO-101 path → MuJoCo physics gate", t.motion],
-      ["Dataset", "each kept move replayed on new layouts, every rollout re-gated", t.dataset],
-      ["Tune", `ChunkMLP, ${(pol.params || 0).toLocaleString()} params, on the CPU`, t.train],
-      ["Test", `${pol.eval_n || 20} fixed layouts the policy never saw`, t.evaluate],
-    ];
+    const summary = box.kind === "robot" ? (await fetch(`/api/runs/${box.id}`).then((r) => r.json()).catch(() => ({}))).summary : null;
+    const m = sheetModel(box, summary);
+    $("#sheet-kicker").textContent = `ROBOT ${String(box.n).padStart(2, "0")} · SO-101 · simulated in MuJoCo`;
+    $("#sheet-title").textContent = m.title;
+    let dl = $("#sheet-dl");
+    if (!dl) { dl = el("a", "dl big"); dl.id = "sheet-dl"; dl.textContent = "Download"; $(".sheet-head").insertBefore(dl, $("#sheet-close")); }
+    dl.href = `/api/runs/${box.id}/download`; dl.setAttribute("download", "");
+    dl.hidden = !box.root.classList.contains("is-ready");
     $("#sheet-body").innerHTML = `
-      ${promptCard(`I want to train a robot to ${box.task}`)}
-      <section class="card">
-        <h3>Deployment</h3>
-        ${ready ? `<video class="hero-video" src="/runs/${box.id}/showcase.mp4" autoplay muted loop playsinline></video>` : ""}
-        <div class="ready">${ready ? `<span class="status ok"><i></i><span>Ready to deploy</span></span>` : `<span class="status wait"><i></i><span>${esc($(".status span", box.root).textContent)}</span></span>`}
-          <span class="nums">policy.pt · ${pol.bytes ? (pol.bytes / 1024).toFixed(0) + " KB" : "–"} · state-based · SO-101</span></div>
-        <p class="note">Sim-tested only: the robot passed ${ready || "–"} unseen layouts in MuJoCo. It reads joint angles and object positions, not camera pixels.</p>
-      </section>
-      <section class="card">
-        <h3>At a glance</h3>
-        <dl class="kv">
-          <div><dd>${ev("clip").length}</dd><dt>clips pulled in the sandbox</dt></div>
-          <div><dd>${verdicts.filter((v) => v.accept).length}/${verdicts.length}</dd><dt>verified by the VLM</dt></div>
-          <div><dd>${ev("blocked").length}</dd><dt>hostile or junk fetches blocked</dt></div>
-          <div><dd>${moves.filter((m) => m.ok).length}/${moves.length}</dd><dt>human hand moves kept by physics</dt></div>
-          <div><dd>${(s.dataset || {}).episodes ?? box.eps}</dd><dt>physics-checked episodes</dt></div>
-          <div><dd>${pol.train_seconds ?? "–"}s</dd><dt>tuning on the CPU</dt></div>
-        </dl>
-        <h3 style="margin-top:16px">Pipeline</h3>
-        <ol class="steps">${steps.map(([a, b, c]) => `<li><b>${a}</b><code>${c != null ? c + " s" : ""}</code><span style="grid-column:2/-1">${b}</span></li>`).join("")}</ol>
-      </section>
-      <section class="card">
-        <h3>Where it learned from</h3>
-        <div class="src">${verdicts.map((v) => `<div><em class="${v.accept ? "ok" : "no"}">${v.accept ? "used" : "rejected"}</em>
-          <span>${esc(short(v.title, 80))}<small>${esc(v.licence)} · ${esc(v.author || v.source)}</small><small>${esc(v.reason)}</small></span></div>`).join("") || "<p class='note'>No clips yet.</p>"}</div>
-      </section>
-      <section class="card">
-        <h3>Contained in the sandbox</h3>
-        <div class="src">${ev("blocked").map((b) => `<div><em class="no">blocked</em><span>${esc(b.reason)}<small>${esc(short(b.url, 70))}</small></span></div>`).join("") || "<p class='note'>Nothing blocked.</p>"}</div>
-        <h3 style="margin-top:16px">Test on unseen layouts</h3>
-        <div class="dots">${rolls.map((ok) => `<i class="${ok ? "" : "no"}"></i>`).join("")}</div>
-      </section>
-      <section class="card span">
-        <h3>Containment and audit</h3>
-        <dl class="kv">
-          <div><dd>${esc(vm ? vm.instance.slice(0, 8) : "local")}</dd><dt>${vm ? `Vultr VM · ${esc(vm.plan)} · ${esc(vm.region)}` : "Docker on this machine"}</dt></div>
-          <div><dd>${ev("sandbox_start").length}</dd><dt>throwaway containers, all destroyed</dt></div>
-          <div><dd>${ev("model_call").length}</dd><dt>model calls logged (sizes and timing, no prompts)</dt></div>
-          <div><dd>${gone ? (gone.cost_usd != null ? "$" + gone.cost_usd : "gone") : vm ? "live" : "–"}</dd><dt>${gone ? `VM deleted after ${gone.seconds}s` : vm ? "VM still running" : "no VM"}</dt></div>
-        </dl>
-        <p class="note">${vm ? esc(vm.firewall) + ". " : ""}Every event is hash-chained; <a href="/api/runs/${box.id}/audit">download the audit log</a> · chain check: <span id="audit-ok">checking…</span></p>
-        ${box.root.classList.contains("is-ended") ? "" : `<button type="button" class="kill big" id="sheet-kill">Kill this robot's sandbox</button>`}
-      </section>
-      <section class="card span">
-        <h3>Full log</h3>
-        <div class="log">${box.log.map(([, text, cls]) => `<div class="${cls}">${esc(text)}</div>`).join("")}</div>
-      </section>`;
-    sheet.hidden = false;
+      <section class="card span prompt-card"><h3>Prompt</h3><p class="prompt-text">“${esc(box.prompt)}”</p></section>
+      <section class="card span"><h3>Result</h3>${m.media}<p class="note">${esc(m.note)}</p></section>
+      <section class="card"><h3>At a glance</h3>${kv(m.glance)}</section>
+      <section class="card"><h3>How it ran</h3>${stepList(m.steps)}
+        ${box.root.classList.contains("is-ended") ? "" : `<button type="button" class="kill big" id="sheet-kill">Kill this robot's sandbox</button>`}</section>
+      <section class="card span"><h3>Sources</h3>${m.sources}</section>
+      <section class="card span"><h3>Full log</h3><div class="log">${box.log.map(([, text, cls]) => `<div class="${cls}">${esc(text)}</div>`).join("")}</div></section>`;
+    $("#sheet").hidden = false;
     mark("sheet");
-    $("#sheet-kill")?.addEventListener("click", () => killBox(box));
-    fetch(`/api/runs/${box.id}/audit/verify`).then((r) => r.json()).then((v) => {
-      $("#audit-ok").textContent = v.ok ? `intact · ${v.events} events` : v.ok === false ? `BROKEN at event ${v.broken_at}` : "not chained (older run)";
-    }).catch(() => { $("#audit-ok").textContent = "unavailable in replay"; });
     document.body.classList.add("is-locked");
+    $("#sheet-kill")?.addEventListener("click", () => killBox(box));
+    if (m.onOpen) m.onOpen();
   }
   async function killBox(box) {
     if (box.root.classList.contains("is-ended")) return;
@@ -365,7 +464,10 @@
   // ---------- replay and demo ----------
   async function replay(id, task, speed, maxGap) {
     const d = await fetch(`/api/runs/${id}`).then((r) => r.json());
-    const box = addBox(id, task || (d.summary?.text || "").replace(/^I want to train a robot to /, ""));
+    const kind = id.startsWith("workout-") ? "workout" : "robot";
+    const text = task || (d.summary?.text || d.events[0]?.text || "").replace(/^I want to train a robot to /, "");
+    const box = addBox(id, text, kind);
+    if (!isFinite(speed)) { for (const e of d.events) box.handle(e); return box; }
     let prev = null;
     for (const e of d.events) {
       const at = e.at ?? e.t;
@@ -420,7 +522,12 @@
   } else if (qs.get("preload") !== "0") {
     // finished robots from earlier runs; a new prompt appears above them. ?preload=run,chess:run to choose
     (async () => {
-      const list = (qs.get("preload") || "chess:chess-140740-0d00,box-place").split(",");
+      let list = qs.get("preload")?.split(",");
+      if (!list) {  // the newest finished workout run (else the block-and-bowl run), then the chess run
+        const runs = await fetch("/api/runs").then((r) => r.json()).catch(() => ({ runs: [] }));
+        const w = runs.runs.filter((r) => r.id.startsWith("workout-")).map((r) => r.id).sort().pop();
+        list = ["chess:chess-140740-0d00", w || "box-place"];
+      }
       for (const item of list) {
         if (item.startsWith("chess:")) await addChessBox(item.slice(6)).catch(() => {});
         else await replay(item, null, Infinity, 0).catch(() => {});

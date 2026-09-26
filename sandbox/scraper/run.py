@@ -29,7 +29,9 @@ from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 
-UA = os.environ.get("SCRAPER_UA", "AgentArenaProto/0.1 (open-licence video research prototype) httpx")
+UA = os.environ.get(
+    "SCRAPER_UA", "AgentArenaProto/0.1 (open-licence video research prototype) httpx"
+)
 OUT = "/out"
 MAX_SECONDS = 40
 MAX_MEDIA_BYTES = 40_000_000
@@ -86,7 +88,9 @@ def guarded_get(
         seen.append(url)
         with client.stream("GET", url, timeout=10, headers=headers or {}) as r:
             if r.status_code == 429:
-                raise Blocked("host asked us to slow down (HTTP 429); backed off politely")
+                raise Blocked(
+                    "host asked us to slow down (HTTP 429); backed off politely"
+                )
             if r.status_code >= 400:
                 raise Blocked(f"HTTP {r.status_code}")
             if r.is_redirect:
@@ -107,17 +111,62 @@ def guarded_get(
     )
 
 
+def _scrapling_json(url: str) -> dict:
+    """Search APIs are fetched with Scrapling (https://github.com/D4Vinci/Scrapling); JSON only, capped."""
+    from scrapling.fetchers import Fetcher
+
+    r = Fetcher.get(
+        url, headers={"User-Agent": UA}, timeout=15, stealthy_headers=False, retries=1
+    )
+    if r.status >= 400:
+        raise httpx.HTTPError(f"HTTP {r.status}")
+    if len(r.body or b"") > MAX_PAGE_BYTES:
+        raise Blocked("search response over the cap")
+    return r.json()
+
+
+def _smallest_derivative(ii: dict) -> str | None:
+    """The smallest version Commons already serves that is still at least 240 px tall (else the original)."""
+    ok = [
+        d
+        for d in ii.get("derivatives", [])
+        if (d.get("height") or 0) >= 240 and "webm" in str(d.get("type", ""))
+    ]
+    best = min(
+        ok, key=lambda d: (d.get("height") or 0) * (d.get("width") or 0), default=None
+    )
+    return (best or {}).get("src") or ii.get("url")
+
+
+def _scrapling_media(url: str, dst: str) -> str | None:
+    """Download media with Scrapling, asking for at most MAX_MEDIA_BYTES (HTTP Range) and refusing anything larger."""
+    from scrapling.fetchers import Fetcher
+
+    r = Fetcher.get(
+        url,
+        headers={"User-Agent": UA, "Range": f"bytes=0-{MAX_MEDIA_BYTES - 1}"},
+        timeout=25,
+        stealthy_headers=False,
+        retries=1,
+        max_redirects=3,
+    )
+    body = r.body or b""
+    if r.status >= 400 or not body or len(body) > MAX_MEDIA_BYTES:
+        return None
+    with open(dst, "wb") as f:
+        f.write(body)
+    return dst
+
+
 def search_commons(client, q, limit):
     api = (
         "https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6"
-        f"&gsrsearch={quote(q + ' filetype:video')}&gsrlimit={limit}&prop=imageinfo"
-        "&iiprop=url|size|mediatype|extmetadata&iiextmetadatafilter=LicenseShortName|Artist|ImageDescription"
+        f"&gsrsearch={quote(q + ' filetype:video')}&gsrlimit={limit}&prop=videoinfo"
+        "&viprop=url|size|mediatype|extmetadata|derivatives&viextmetadatafilter=LicenseShortName|Artist|ImageDescription"
     )
-    r = client.get(api, timeout=15)
-    r.raise_for_status()
     out = []
-    for p in (r.json().get("query", {}).get("pages", {}) or {}).values():
-        ii = (p.get("imageinfo") or [{}])[0]
+    for p in (_scrapling_json(api).get("query", {}).get("pages", {}) or {}).values():
+        ii = (p.get("videoinfo") or p.get("imageinfo") or [{}])[0]
         meta = ii.get("extmetadata", {})
         lic = meta.get("LicenseShortName", {}).get("value", "")
         artist = re.sub(r"<[^>]+>", "", meta.get("Artist", {}).get("value", ""))[:80]
@@ -126,12 +175,14 @@ def search_commons(client, q, limit):
                 "source": "wikimedia-commons",
                 "title": p.get("title", "")[5:],
                 "page": ii.get("descriptionurl"),
-                "media": ii.get("url"),
+                "media": _smallest_derivative(ii),
                 "licence": lic,
                 "author": artist.strip(),
                 "bytes": ii.get("size", 0),
                 "duration": ii.get("duration"),
-                "description": re.sub(r"<[^>]+>", " ", meta.get("ImageDescription", {}).get("value", ""))[:400],
+                "description": re.sub(
+                    r"<[^>]+>", " ", meta.get("ImageDescription", {}).get("value", "")
+                )[:400],
             }
         )
     return out
@@ -144,10 +195,8 @@ def search_archive(client, q, limit):
         + quote(query)
         + f"&fl[]=identifier&fl[]=title&fl[]=licenseurl&fl[]=creator&rows={limit}&output=json"
     )
-    r = client.get(url, timeout=15)
-    r.raise_for_status()
     out = []
-    for d in r.json().get("response", {}).get("docs", []):
+    for d in _scrapling_json(url).get("response", {}).get("docs", []):
         creator = d.get("creator", "")
         out.append(
             {
@@ -181,7 +230,8 @@ def reencode(src: str, dst: str, seconds: int) -> float:
         "ffmpeg",
         "-v",
         "error",
-        "-y", *(["-user_agent", UA] if src.startswith("http") else []),
+        "-y",
+        *(["-user_agent", UA] if src.startswith("http") else []),
         "-t",
         str(seconds),
         "-i",
@@ -242,15 +292,25 @@ def fetch_media(client, c, deadline) -> str | None:
     tmp = f"/tmp/{hashlib.sha1(c['page'].encode()).hexdigest()[:10]}"
     if c["source"] == "internet-archive":
         ident = c["page"].rstrip("/").split("/")[-1]
-        meta = client.get(f"https://archive.org/metadata/{quote(ident)}", timeout=15).json()
-        vids = [f for f in meta.get("files", []) if str(f.get("name", "")).lower().endswith((".mp4", ".ogv", ".webm"))
-                and f.get("size")]
+        meta = client.get(
+            f"https://archive.org/metadata/{quote(ident)}", timeout=15
+        ).json()
+        vids = [
+            f
+            for f in meta.get("files", [])
+            if str(f.get("name", "")).lower().endswith((".mp4", ".ogv", ".webm"))
+            and f.get("size")
+        ]
         if meta.get("metadata", {}).get("licenseurl"):
             c["licence"] = meta["metadata"]["licenseurl"]
         if vids:
             f = min(vids, key=lambda f: int(f["size"]))
             url = f"https://archive.org/download/{quote(ident)}/{quote(f['name'])}"
-            rng = {"Range": f"bytes=0-{MAX_MEDIA_BYTES - 1}"} if int(f["size"]) > MAX_MEDIA_BYTES else None
+            rng = (
+                {"Range": f"bytes=0-{MAX_MEDIA_BYTES - 1}"}
+                if int(f["size"]) > MAX_MEDIA_BYTES
+                else None
+            )
             final, body, _ = guarded_get(client, url, MAX_MEDIA_BYTES, deadline, rng)
             with open(tmp, "wb") as fh:
                 fh.write(body)
@@ -278,8 +338,16 @@ def fetch_media(client, c, deadline) -> str | None:
                 f for f in os.listdir("/tmp") if f.startswith(os.path.basename(tmp))
             ]
             return os.path.join("/tmp", files[0]) if files else None
+    if c["source"] == "wikimedia-commons" and c.get("media"):
+        got = _scrapling_media(c["media"], tmp)
+        if got:
+            return got
     # large archive files: ask for only the first part (HTTP Range); a truncated webm/ogv still decodes from the start
-    rng = {"Range": f"bytes=0-{MAX_MEDIA_BYTES - 1}"} if c.get("bytes", 0) > MAX_MEDIA_BYTES else None
+    rng = (
+        {"Range": f"bytes=0-{MAX_MEDIA_BYTES - 1}"}
+        if c.get("bytes", 0) > MAX_MEDIA_BYTES
+        else None
+    )
     _, body, ctype = guarded_get(client, c["media"], MAX_MEDIA_BYTES, deadline, rng)
     with open(tmp, "wb") as f:
         f.write(body)
@@ -332,7 +400,9 @@ def main():
     deadline = time.time() + job.get("time_budget_s", 240)
     os.makedirs(f"{OUT}/clips", exist_ok=True)
     os.makedirs(f"{OUT}/frames", exist_ok=True)
-    secrets = [k for k, v in os.environ.items() if v and re.search(r"KEY|TOKEN|SECRET|PASS", k)]
+    secrets = [
+        k for k, v in os.environ.items() if v and re.search(r"KEY|TOKEN|SECRET|PASS", k)
+    ]
     emit(
         "sandbox",
         message="sandbox up",
@@ -341,7 +411,9 @@ def main():
         writable=["/out", "/tmp"],
         caps=job.get("caps", {}),
     )
-    client = httpx.Client(headers={"User-Agent": job.get("user_agent") or UA}, follow_redirects=False)
+    client = httpx.Client(
+        headers={"User-Agent": job.get("user_agent") or UA}, follow_redirects=False
+    )
     if job.get("mode") == "pgn":  # find a chess game's moves (Scrapling); see pgn.py
         from pgn import run as find_game
 
@@ -349,6 +421,7 @@ def main():
         return
     if job.get("dataset") == "hocap":
         from dataset import hocap
+
         kept = hocap(job, emit, OUT, reencode, stills, lambda: time.time() < deadline)
         with open(f"{OUT}/manifest.json", "w") as f:
             json.dump({"clips": kept}, f, indent=1)
@@ -358,8 +431,22 @@ def main():
     if job.get("fetch"):
         for c in job["fetch"][:16]:
             if urlparse(str(c.get("page", ""))).scheme in ("http", "https"):
-                cands.append({k: c.get(k) for k in ("source", "title", "page", "media", "licence", "author", "bytes",
-                                                     "duration", "description")})
+                cands.append(
+                    {
+                        k: c.get(k)
+                        for k in (
+                            "source",
+                            "title",
+                            "page",
+                            "media",
+                            "licence",
+                            "author",
+                            "bytes",
+                            "duration",
+                            "description",
+                        )
+                    }
+                )
         job = {**job, "queries": [], "include": [], "exclude": []}
     for q in job["queries"]:
         for fn, name in (
@@ -399,7 +486,11 @@ def main():
     exc = [t.lower() for t in job.get("exclude", [])]
 
     def score(c):
-        text = f"{c['title']} {c.get('description', '')}".lower().replace("_", " ").replace("-", " ")
+        text = (
+            f"{c['title']} {c.get('description', '')}".lower()
+            .replace("_", " ")
+            .replace("-", " ")
+        )
         if any(t in text for t in exc):
             return -1
         return sum(t in text for t in inc) if inc else 1
@@ -408,14 +499,41 @@ def main():
     for c in cands:
         sc = score(c)
         if sc <= 0 and c["source"] != "web":
-            emit("skip", title=c["title"], reason="agent: title/description off-task" if sc == 0 else "agent: excluded term")
+            emit(
+                "skip",
+                title=c["title"],
+                reason="agent: title/description off-task"
+                if sc == 0
+                else "agent: excluded term",
+            )
             continue
         if not licence_ok(c):
-            emit("skip", title=c["title"], reason=f"licence not open enough: {c['licence'] or 'none stated'}")
+            emit(
+                "skip",
+                title=c["title"],
+                reason=f"licence not open enough: {c['licence'] or 'none stated'}",
+            )
             continue
         c["score"] = sc
         ranked.append(c)
-        emit("candidate", score=sc, **{k: c.get(k) for k in ("source", "title", "page", "media", "licence", "author", "bytes", "duration", "description")})
+        emit(
+            "candidate",
+            score=sc,
+            **{
+                k: c.get(k)
+                for k in (
+                    "source",
+                    "title",
+                    "page",
+                    "media",
+                    "licence",
+                    "author",
+                    "bytes",
+                    "duration",
+                    "description",
+                )
+            },
+        )
     cands = sorted(ranked, key=lambda c: -c["score"])
     kept = []
     for c in cands:
@@ -440,7 +558,9 @@ def main():
             src = fetch_media(client, c, min(deadline, time.time() + 60))
             if not src:
                 raise Blocked("no downloadable file under the size cap")
-            dur = reencode(src, f"{OUT}/clips/{cid}.mp4", int(job.get("clip_seconds", MAX_SECONDS)))
+            dur = reencode(
+                src, f"{OUT}/clips/{cid}.mp4", int(job.get("clip_seconds", MAX_SECONDS))
+            )
             if src.startswith("/tmp/"):
                 os.remove(src)
             if dur < 2:
