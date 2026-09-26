@@ -1,5 +1,36 @@
 # Stats sheet (measured 2026-09-25 on this Mac)
 
+## 0. CURRENT (evening, after Pranav's notes): real HO-Cap video -> bowl, stack, tower. No chess anywhere.
+
+Source: **HO-Cap** (UT Dallas IRVL + NVIDIA), **CC BY 4.0**, https://irvlutd.github.io/HOCap/ : real people at a
+table picking up and setting down everyday objects, 8 fixed third-person cameras. Found via a GitHub/HF survey of
+openly licensed human-manipulation datasets (NC, ND, gated and YouTube-link datasets excluded). Each subject is one
+8.5 to 22 GB zip; the sandbox reads the zip directory and only one camera's frames over HTTP Range requests
+(arena/remotezip.py, sandbox/scraper/dataset.py): 108 MB of 8.5 GB and 186 MB of 22.1 GB for 4 sequences.
+Camera 043422252387 (side view of the table) chosen because MediaPipe finds the hand in 221 of 339 frames there.
+
+| task | clips pulled -> VLM verified | real hand moves kept (physics probes) | episodes | train (CPU) | success, 20 unseen layouts |
+|---|---|---|---|---|---|
+| A put the block in the bowl (fully automatic run) | 4 -> 1 | 6 / 6 | 141 | 20.9 s | **17 / 20** |
+| B stack it on another block (same verified clip) | (same) | 4 / 6 | 90 / 96 | 19.7 s | **20 / 20** |
+| C add one more: a 3-block tower | 4 -> 3 (2 other people) | 7 / 17 | 145 / 168 | 19.3 s | **16 / 20** |
+
+- Run A end to end: plan 9 s, sandboxes 238 s (mostly the remote-zip reads), verify 40 s, MediaPipe + probes 32 s,
+  dataset 32 s, train 24 s, evaluate + video 48 s. About 7 minutes.
+- Declared robot-side additions (same for every clip): reach, grasp dwell, release dwell, retreat, and a clearance
+  floor so the carried block never dips below the bowl wall or stack top (tower margin 2.5 cm; a 1.2 cm margin let
+  the gripper knock the middle block off, and more than 2.5 cm is past the arm's reach with the jaws down). With the
+  2.5 cm margin 14 of 29 real moves pass the tower gate, so it still filters.
+- Verifier rule changed after it rejected clips for "no bowl in the scene": it now judges the hand's
+  pick-carry-set-down motion only; the robot's scene supplies the goal.
+- Policy: 166k-parameter state-based MLP (robot state + object positions, not pixels). Simulation only.
+- Containment across all runs so far: **70 planted hostile pages in 14 runs, 0 reached the app** (69 blocked
+  explicitly, 1 dropped on a network error).
+- ResNet-18 (pretrained, Hugging Face) comparison on this data: running; results go in section 7b below.
+
+**Everything below this line is the earlier (afternoon) pass. Its chess numbers are superseded and not used anywhere.**
+
+
 Machine: Apple M4, 10 cores, 16 GB, heavily loaded (a 50 h render holds the lock, swap near full). Every heavy
 step ran at `nice -n 19` + `taskpolicy -b` (background QoS), so all wall times below are pessimistic.
 LLM/VLM: headless Claude Code CLI (Sonnet) behind a local OpenAI-compatible shim (arena/claude_shim.py).

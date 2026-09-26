@@ -34,7 +34,7 @@ from arena.sim.retarget import MotionShape, plan, to_joints
 from arena.sim.scene import DT, HOME, Scene
 
 MID, REV = "microsoft/resnet-18", "65a5785d9156231087c481e0c7dd33a5ff6f7e3e"
-RUN = Path("runs/place-seeded")
+RUN = Path("runs/hocap-place")
 OUT = Path("runs/pretrained")
 RES, EVERY, N_EVAL = 96, 4, 50
 MEAN = np.array([0.485, 0.456, 0.406], np.float32)[:, None, None]
