@@ -7,6 +7,7 @@ Run with a Python that has playwright (e.g. ~/helloworld/scout/.venv/bin/python)
 on :8800. The browser and ffmpeg started here are closed at the end.
 """
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -22,7 +23,7 @@ FPS = 25
 def cards(p):
     b = p.chromium.launch()
     page = b.new_page(viewport={"width": 1280, "height": 720}, device_scale_factor=1.5)
-    for card in ("intro", "close", "physov", "hud"):
+    for card in ("intro", "close", "physov", "hud", "c1", "c2", "c3"):
         page.goto(f"file://{ROOT}/film/cards.html?card={card}")
         page.wait_for_timeout(1500)  # fonts
         page.screenshot(
@@ -105,6 +106,7 @@ def demo(p, seconds: float, speed: int, gap: int, hold: float = 5.0):
                            "-i", "-", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-r", str(FPS),
                            str(WORK / "app.mp4")], stdin=subprocess.PIPE)
     done_at = None
+    t0 = page.evaluate("Date.now()")  # page time of frame 0 (the fake clock only moves when we advance it)
     for i in range(int(seconds * FPS)):
         page.clock.run_for(1000 // FPS)
         page.wait_for_timeout(15)
@@ -115,10 +117,12 @@ def demo(p, seconds: float, speed: int, gap: int, hold: float = 5.0):
             break
         if i % 100 == 0:
             print("frame", i, flush=True)
+    marks = page.evaluate("window.__marks || []")
+    (WORK / "marks.json").write_text(json.dumps({"t0": t0, "fps": FPS, "marks": marks}))
     ff.stdin.close()
     ff.wait()
     b.close()
-    print("demo frames", i + 1, "done at", done_at, flush=True)
+    print("demo frames", i + 1, "done at", done_at, "marks", len(marks), flush=True)
 
 
 with sync_playwright() as p:

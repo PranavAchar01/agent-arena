@@ -60,6 +60,13 @@
   .close .line em { font-style: normal; color: var(--amber-hi); }
   .close .pipe { margin-top: 18px; font: 500 13px/1 "JetBrains Mono", monospace; color: var(--text2); letter-spacing: .02em; }
   .close .event { position: absolute; bottom: 26px; left: 0; right: 0; text-align: center; font-size: 13px; color: rgba(240,236,228,.5); }
+  .clip { position: absolute; display: none; width: 270px; padding: 14px 16px 12px; background: #efe9dc; color: #1c1a17;
+    border-radius: 3px; box-shadow: 0 14px 30px -10px rgba(0,0,0,.7), 0 0 0 1px rgba(0,0,0,.08); font-family: Georgia, serif; }
+  .clip::before { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0,0,0,.018) 0 2px, transparent 2px 4px); pointer-events: none; }
+  .clip .d { font: 600 10px/1 "JetBrains Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: #8a5a14; }
+  .clip h4 { margin: 6px 0 6px; font: 700 18px/1.2 "Hedvig Letters Serif", Georgia, serif; letter-spacing: -.01em; }
+  .clip p { margin: 0; font-size: 12.5px; line-height: 1.4; color: #3b372f; }
+  .clip .s { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(0,0,0,.15); font: 500 9.5px/1.3 "JetBrains Mono", monospace; color: #6d665a; }
 </style>
 </head>
 <body>
@@ -138,6 +145,9 @@
     <p class="event">The Agent Arena · Vultr × Cerebral Valley · San Francisco · human video: HO-Cap (CC BY 4.0)</p>
   </section>
 
+  <div class="clip" id="c1" style="left:70px;top:548px;transform:rotate(-2.5deg)"><div class="d">18 Oct 2021</div><h4>DeepMind acquires MuJoCo and makes it free</h4><p>The physics simulator its own robotics team already used.</p><div class="s">Source: Google DeepMind blog; The Robot Report</div></div>
+  <div class="clip" id="c2" style="left:360px;top:560px;transform:rotate(1.8deg)"><div class="d">May 2022</div><h4>MuJoCo goes open source</h4><p>Apache 2.0, on GitHub. 15.3k stars today.</p><div class="s">Source: Google DeepMind, “Open-sourcing MuJoCo”; github.com/google-deepmind/mujoco</div></div>
+  <div class="clip" id="c3" style="left:930px;top:470px;transform:rotate(-1.5deg)"><div class="d">Science Robotics, 2024</div><h4>Robots trained in MuJoCo play soccer for real</h4><p>Trained in a MuJoCo simulation, then run on real humanoid robots zero-shot.</p><div class="s">Source: Haarnoja et al., arXiv:2304.13653</div></div>
   <div class="tag" id="tag">MuJoCo simulation · unseen layout</div>
   <div class="cap" id="cap"><div class="t" id="cap-t"></div><div class="m" id="cap-m"></div></div>
 
@@ -151,6 +161,7 @@
   };
   if (["title", "end", "physics", "intro", "close"].includes(card)) document.getElementById(card).style.display = "block";
   else if (card === "physov") { document.getElementById("physov").style.display = "block"; }
+  else if (/^c\d$/.test(card)) { document.getElementById(card).style.display = "block"; }
   else if (card === "hud") { document.getElementById("hud").style.display = "block"; }
   else if (caps[card]) {
     const [l, t, m] = caps[card];

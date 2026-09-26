@@ -11,6 +11,7 @@
   const qs = new URLSearchParams(location.search);
   const film = qs.has("film");
   if (film) document.body.classList.add("is-film");
+  const mark = (k) => { if (film) (window.__marks ||= []).push([k, Date.now()]); };
 
   const PHASES = ["Scrape", "Verify", "Retarget", "Tune", "Test"];
   const PHASE_OF = { queued: -1, plan: 0, sandbox_start: 0, sandbox: 0, search: 0, page: 0, download: 0, clip: 0, blocked: 0, warn: 0,
@@ -111,6 +112,8 @@
       if (p !== undefined && p >= 0) this.setPhase(p);
       const f = FORMAT[e.type];
       if (f) { const out = f(e, this); if (out) (Array.isArray(out[0]) ? out : [out]).forEach(([t, c]) => this.line(t, c)); }
+      if (e.type === "blocked") mark("blocked");
+      if (e.type === "verdict" && e.accept) mark("verified");
       if (e.type === "error") { this.setStatus("Failed", "no"); this.line(`error: ${e.message}`, "t-no"); }
       if (e.type === "done" && e.timings_s) this.finish();
     }
@@ -122,6 +125,7 @@
       $(".n-succ", this.root).textContent = this.success;
       $(".deploy-rate", this.root).textContent = `${this.success} unseen layouts`;
       this.setStatus("Ready to deploy", "ok");
+      mark("ready");
       this.root.classList.add("is-ready");
       const v = $("video", this.root);
       v.src = `/runs/${this.id}/showcase.mp4`;
@@ -223,6 +227,7 @@
         <div class="log">${box.log.map(([, text, cls]) => `<div class="${cls}">${esc(text)}</div>`).join("")}</div>
       </section>`;
     sheet.hidden = false;
+    mark("sheet");
     document.body.classList.add("is-locked");
   }
   const closeSheet = () => { $("#sheet").hidden = true; document.body.classList.remove("is-locked"); };
@@ -245,8 +250,9 @@
   }
   async function typeAndTrain(text, inp, btn) {
     inp.value = "";
-    for (const ch of text) { inp.value += ch; await wait(45); }
+    for (const ch of text) { inp.value += ch; mark("key"); await wait(45); }
     await wait(350);
+    mark("submit");
     btn.classList.add("is-pressed"); await wait(160); btn.classList.remove("is-pressed");
     inp.value = "";
   }
@@ -273,7 +279,7 @@
         else await typeAndTrain(text, $("#prompt2"), $("#go2"));
         runs.push(replay(id, text, speed, maxGap));
         if (k === 0) setTag(`<b>▶▶ ${esc(qs.get("speedtag"))}× speed</b><span>each robot took ${esc(qs.get("livetime") || "10 to 11 min")} live on a laptop CPU</span>`);
-        if (k === 0) { await wait(300); await glideTo($("#fleet").offsetTop - 12, 1100); }
+        if (k === 0) { await wait(300); mark("glide"); await glideTo($("#fleet").offsetTop - 12, 1100); }
         await wait(Number(qs.get("stagger") || 3500));
       }
       const done = await Promise.all(runs);
