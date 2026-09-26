@@ -1,6 +1,6 @@
 # Agent Arena prototype: status
 
-Local only. Never push. Resume from here after an app restart.
+Public repo: github.com/PranavAchar01/agent-arena. Resume from here after an app restart.
 
 ## How to run
 - Claude shim (local OpenAI-compatible VLM/LLM): `.venv/bin/python -m uvicorn arena.claude_shim:app --port 8790` (pid in runs/shim.pid)
