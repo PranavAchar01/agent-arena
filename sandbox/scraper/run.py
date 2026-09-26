@@ -74,7 +74,7 @@ def robots_ok(client: httpx.Client, url: str) -> bool:
 
 
 def guarded_get(
-    client: httpx.Client, url: str, cap: int, deadline: float
+    client: httpx.Client, url: str, cap: int, deadline: float, headers=None
 ) -> tuple[str, bytes, str]:
     """GET with manual redirects, scheme allowlist, robots.txt, byte cap and a deadline."""
     seen = []
@@ -84,7 +84,7 @@ def guarded_get(
         if not robots_ok(client, url):
             raise Blocked("robots.txt disallows this URL")
         seen.append(url)
-        with client.stream("GET", url, timeout=10) as r:
+        with client.stream("GET", url, timeout=10, headers=headers or {}) as r:
             if r.status_code == 429:
                 raise Blocked("host asked us to slow down (HTTP 429); backed off politely")
             if r.status_code >= 400:
@@ -262,10 +262,9 @@ def fetch_media(client, c, deadline) -> str | None:
                 f for f in os.listdir("/tmp") if f.startswith(os.path.basename(tmp))
             ]
             return os.path.join("/tmp", files[0]) if files else None
-    if c.get("bytes", 0) > MAX_MEDIA_BYTES:
-        # large Commons files: let ffmpeg read only the first MAX_SECONDS over HTTP range requests
-        return c["media"]
-    _, body, ctype = guarded_get(client, c["media"], MAX_MEDIA_BYTES, deadline)
+    # large archive files: ask for only the first part (HTTP Range); a truncated webm/ogv still decodes from the start
+    rng = {"Range": f"bytes=0-{MAX_MEDIA_BYTES - 1}"} if c.get("bytes", 0) > MAX_MEDIA_BYTES else None
+    _, body, ctype = guarded_get(client, c["media"], MAX_MEDIA_BYTES, deadline, rng)
     with open(tmp, "wb") as f:
         f.write(body)
     return tmp
@@ -328,6 +327,12 @@ def main():
     )
     client = httpx.Client(headers={"User-Agent": job.get("user_agent") or UA}, follow_redirects=False)
     cands, seen = [], set()
+    if job.get("fetch"):
+        for c in job["fetch"][:16]:
+            if urlparse(str(c.get("page", ""))).scheme in ("http", "https"):
+                cands.append({k: c.get(k) for k in ("source", "title", "page", "media", "licence", "author", "bytes",
+                                                     "duration", "description")})
+        job = {**job, "queries": [], "include": [], "exclude": []}
     for q in job["queries"]:
         for fn, name in (
             (search_commons, "Wikimedia Commons"),
@@ -377,9 +382,12 @@ def main():
         if sc <= 0 and c["source"] != "web":
             emit("skip", title=c["title"], reason="agent: title/description off-task" if sc == 0 else "agent: excluded term")
             continue
+        if not licence_ok(c):
+            emit("skip", title=c["title"], reason=f"licence not open enough: {c['licence'] or 'none stated'}")
+            continue
         c["score"] = sc
         ranked.append(c)
-        emit("candidate", title=c["title"][:120], source=c["source"], licence=c["licence"], score=sc, page=c["page"])
+        emit("candidate", score=sc, **{k: c.get(k) for k in ("source", "title", "page", "media", "licence", "author", "bytes", "duration", "description")})
     cands = sorted(ranked, key=lambda c: -c["score"])
     kept = []
     for c in cands:

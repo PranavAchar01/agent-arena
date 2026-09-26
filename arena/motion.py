@@ -54,72 +54,36 @@ def _smooth(x, k=5):
     )
 
 
-def best_track(pose: dict):
-    """Follow the hand that moves the most. Returns times, pinch points (px), hand size (px), detection rate."""
+def _tracks(pose: dict):
+    """Greedy nearest-neighbour hand tracks (pinch point and hand size in pixels)."""
     w, h = pose["width"], pose["height"]
-    frames = pose["frames"]
     tracks: list[list] = []
-    for f in frames:
+    for f in pose["frames"]:
         for hd in f["hands"]:
             pinch = (np.array(hd["thumb"]) + np.array(hd["index"])) / 2 * [w, h]
-            size = np.linalg.norm(
-                (np.array(hd["wrist"]) - np.array(hd["mcp"])) * [w, h]
-            )
+            size = np.linalg.norm((np.array(hd["wrist"]) - np.array(hd["mcp"])) * [w, h])
             best, bd = None, 1e9
             for tr in tracks:
                 t_last, p_last, _ = tr[-1]
                 d = np.linalg.norm(p_last - pinch)
-                if f["t"] - t_last < 0.5 and d < max(3 * size, 40) and d < bd:
+                if f["t"] - t_last < 0.4 and t_last != f["t"] and d < max(3 * size, 40) and d < bd:
                     best, bd = tr, d
-            if best is not None and best[-1][0] != f["t"]:
-                best.append((f["t"], pinch, size))
-            elif best is None:
-                tracks.append([(f["t"], pinch, size)])
-    if not tracks:
-        return None
-    tr = max(
-        tracks,
-        key=lambda tr: len(tr) * np.ptp(np.array([p for _, p, _ in tr]), 0).sum(),
-    )
-    t = np.array([a for a, _, _ in tr])
-    p = np.array([b for _, b, _ in tr])
-    s = float(np.median([c for _, _, c in tr]))
-    return t, p, s, len(tr) / max(1, len(frames))
+            (best.append if best is not None else lambda x: tracks.append([x]))((f["t"], pinch, size))
+    return [tr for tr in tracks if len(tr) >= 10]
 
 
-def shape_from_pose(pose: dict, family: str, source: str):
-    """Returns (MotionShape or None, quality dict with the reason when None)."""
-    got = best_track(pose)
-    if got is None:
-        return None, {"reason": "no hand found by MediaPipe"}
-    t, p, size, det = got
-    q = {"detected": round(det, 2), "frames": len(t)}
-    if len(t) < 8 or det < 0.5:
-        return None, {**q, "reason": f"hand tracked in only {det:.0%} of frames"}
-    p = _smooth(p / size)  # hand-size units
-    dt = np.gradient(t)
-    speed = np.linalg.norm(np.gradient(p, axis=0), axis=1) / np.maximum(dt, 1e-3)
-    pk = int(np.argmax(speed))
-    thr = 0.25 * speed[pk]
-    a = pk
-    while a > 0 and speed[a] > thr:
-        a -= 1
-    b = pk
-    while b < len(t) - 1 and speed[b] > thr:
-        b += 1
+def _one_move(t, p, a, b, family, source):
     chord = p[b] - p[a]
     L = float(np.linalg.norm(chord))
     dur = float(t[b] - t[a])
-    q.update(
-        move_hand_units=round(L, 2),
-        move_seconds=round(dur, 2),
-        peak_speed=round(float(speed[pk]), 2),
-    )
+    q = {"t0": round(float(t[a]), 2), "move_hand_units": round(L, 2), "move_seconds": round(dur, 2)}
     if L < 1.0:
-        return None, {**q, "reason": f"main move is only {L:.1f} hand-lengths long"}
-    if not 0.25 <= dur <= 5.0 or b - a < 5:
-        return None, {**q, "reason": f"main move lasts {dur:.2f} s (need 0.25 to 5 s)"}
-    seg = p[a : b + 1] - p[a]
+        return None, {**q, "reason": f"move is only {L:.1f} hand-lengths long"}
+    if not 0.25 <= dur <= 5.0:
+        return None, {**q, "reason": f"move lasts {dur:.2f} s (need 0.25 to 5 s)"}
+    if b - a < 5:
+        return None, {**q, "reason": "move spans too few tracked frames"}
+    seg = p[a:b + 1] - p[a]
     e = chord / L
     n = np.array([-e[1], e[0]])
     if n[1] > 0:  # image y points down; lift is toward the top of the frame
@@ -129,20 +93,43 @@ def shape_from_pose(pose: dict, family: str, source: str):
         return None, {**q, "reason": "hand does not travel steadily from start to end"}
     u = np.clip(u / u[-1], 0, 1)
     perp = seg @ n  # hand units
-    tau = (t[a : b + 1] - t[a]) / dur
+    if perp.min() < -1.0:
+        return None, {**q, "reason": "path dips far below its own start and end"}
+    tau = (t[a:b + 1] - t[a]) / dur
     lift = perp if family != "push" else np.zeros_like(perp)
     side = np.clip(perp, -0.7, 0.7) if family == "push" else np.zeros_like(perp)
-    q.update(
-        max_lift=round(float(perp.max()), 2),
-        jitter=round(float(np.std(np.diff(seg, 2, axis=0))), 3),
-    )
+    q.update(max_lift=round(float(perp.max()), 2))
     k = np.linspace(0, 1, 50)
-    return MotionShape(
-        family,
-        k,
-        np.interp(k, tau, u),
-        np.interp(k, tau, lift),
-        np.interp(k, tau, side),
-        dur,
-        source,
-    ), q
+    shape = MotionShape(family, k, np.interp(k, tau, u), np.interp(k, tau, lift), np.interp(k, tau, side), dur,
+                        f"{source}@{t[a]:.1f}s")
+    return shape, q
+
+
+def shapes_from_pose(pose: dict, family: str, source: str, max_moves: int = 6):
+    """Every clean hand move in the clip. Returns (list of (shape, quality), list of rejected-move reasons)."""
+    frames = len(pose["frames"])
+    det = sum(1 for f in pose["frames"] if f["hands"]) / max(1, frames)
+    tracks = _tracks(pose)
+    if not tracks:
+        return [], [{"reason": f"no steady hand track (hand seen in {det:.0%} of frames)"}]
+    good, bad = [], []
+    for tr in tracks:
+        t = np.array([x[0] for x in tr])
+        p = _smooth(np.array([x[1] for x in tr]) / float(np.median([x[2] for x in tr])))
+        speed = np.linalg.norm(np.gradient(p, axis=0), axis=1) / np.maximum(np.gradient(t), 1e-3)
+        used = np.zeros(len(t), bool)
+        for pk in np.argsort(-speed):
+            if used[pk] or speed[pk] < 1.5:  # below 1.5 hand-lengths per second is not a deliberate move
+                continue
+            thr = 0.25 * speed[pk]
+            a = pk
+            while a > 0 and speed[a] > thr and not used[a - 1]:
+                a -= 1
+            b = pk
+            while b < len(t) - 1 and speed[b] > thr and not used[b + 1]:
+                b += 1
+            used[a:b + 1] = True
+            shape, q = _one_move(t, p, a, b, family, source)
+            (good.append((shape, q)) if shape is not None else bad.append(q))
+    good.sort(key=lambda sq: -sq[1]["move_hand_units"])
+    return good[:max_moves], bad

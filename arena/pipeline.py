@@ -18,8 +18,9 @@ import numpy as np
 
 from . import llm
 from .agent import plan as plan_search
+from .agent import rank
 from .layouts import PROBES, sample
-from .motion import shape_from_pose, track_hands
+from .motion import shapes_from_pose, track_hands
 from .policy import N_EVAL, evaluate, train
 from .sandbox.runner import get_runner
 from .sim.ik import IK
@@ -135,14 +136,15 @@ def run(
         events.append(e)
         emit(e)
 
-    job = {
+    # phase A: a sandbox searches and lists open-licence candidates (no downloads)
+    search_job = {
         "queries": plan["queries"],
         "include": plan["include"],
         "exclude": plan["exclude"],
         "per_query": 20,
-        "max_clips": MAX_CLIPS,
+        "max_clips": 0,
         "user_agent": UA,
-        "time_budget_s": 240,
+        "time_budget_s": 120,
         "extra_pages": [
             f"{HOSTILE}/{p}"
             for p in ("loop", "huge.html", "inject.html", "script.html", "fake.html")
@@ -150,8 +152,35 @@ def run(
         if hostile
         else [],
     }
+    with T("search"):
+        get_runner().run(search_job, run_dir / "search", fwd)
+    found = [e for e in events if e["type"] == "candidate"]
+    archive = [c for c in found if c.get("source") != "web"]
+    planted = [c for c in found if c.get("source") == "web"]
+    # the agent reads the titles (as data) and picks what to download; it can only answer with line numbers
+    with T("rank"):
+        picks = (
+            rank(archive, plan["summary"] or text, task, k=MAX_CLIPS) if archive else []
+        )
+    chosen = [archive[i] for i in picks]
+    emit(
+        {
+            "type": "picked",
+            "n": len(chosen),
+            "of": len(archive),
+            "titles": [c["title"] for c in chosen],
+        }
+    )
+    # phase B: a fresh sandbox downloads the picks (plus the planted test links) and re-encodes them
+    fetch_job = {
+        "queries": [],
+        "fetch": chosen + planted,
+        "max_clips": MAX_CLIPS + len(planted),
+        "user_agent": UA,
+        "time_budget_s": 240,
+    }
     with T("scrape"):
-        manifest = get_runner().run(job, run_dir, fwd)
+        manifest = get_runner().run(fetch_job, run_dir, fwd)
     clips = manifest["clips"]
     summary["scrape"] = {
         "searched": sum(e.get("hits", 0) for e in events if e["type"] == "search"),
@@ -195,29 +224,17 @@ def run(
                 v["window"],
                 run_dir / f"pose_{c['id']}.json",
             )
-            shape, q = shape_from_pose(pose, task, c["id"])
-            if shape is None:
-                emit({"type": "motion", "id": c["id"], "ok": False, **q})
-                continue
-            probe = [
-                replay(sc, shape, b, t, y, ik=ik).success for b, t, y in PROBES[task]
-            ]
-            ok = sum(probe) >= 2
-            emit(
-                {
-                    "type": "motion",
-                    "id": c["id"],
-                    "ok": ok,
-                    "probe": probe,
-                    **q,
-                    "reason": ""
-                    if ok
-                    else f"robot replay failed the task on {3 - sum(probe)} of 3 probe layouts",
-                }
-            )
-            (run_dir / f"shape_{c['id']}.json").write_text(json.dumps(shape.to_json()))
-            if ok:
-                shapes.append(shape)
+            found, rejected = shapes_from_pose(pose, task, c["id"])
+            emit({"type": "moves", "id": c["id"], "found": len(found), "rejected": len(rejected),
+                  "reasons": sorted({r["reason"] for r in rejected})[:4]})
+            for shape, q in found:
+                probe = [replay(sc, shape, b, t, y, ik=ik).success for b, t, y in PROBES[task]]
+                ok = sum(probe) >= 2
+                emit({"type": "motion", "id": c["id"], "move": shape.source, "ok": ok, "probe": probe, **q,
+                      "reason": "" if ok else f"robot replay failed the task on {3 - sum(probe)} of 3 probe layouts"})
+                if ok:
+                    shapes.append(shape)
+    (run_dir / "shapes.json").write_text(json.dumps([s.to_json() for s in shapes]))
     summary["shapes"] = [s.source for s in shapes]
 
     # 5. dataset: every accepted human shape replayed on new layouts, each rollout re-gated by physics
