@@ -22,12 +22,12 @@ FPS = 25
 def cards(p):
     b = p.chromium.launch()
     page = b.new_page(viewport={"width": 1280, "height": 720}, device_scale_factor=1.5)
-    for card in ("title", "end", "place", "stack", "tower", "physics"):
+    for card in ("intro", "close", "physov", "hud"):
         page.goto(f"file://{ROOT}/film/cards.html?card={card}")
         page.wait_for_timeout(1500)  # fonts
         page.screenshot(
             path=str(WORK / f"card_{card}.png"),
-            omit_background=card not in ("title", "end", "physics"),
+            omit_background=card not in ("intro", "close"),
         )
         print("card", card, flush=True)
     b.close()
@@ -125,6 +125,6 @@ with sync_playwright() as p:
     if sys.argv[1] == "cards":
         cards(p)
     elif sys.argv[1] == "demo":
-        demo(p, float(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]))
+        demo(p, float(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), hold=3.0)
     else:
         app(p, float(sys.argv[2]))

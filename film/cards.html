@@ -40,6 +40,26 @@
   .phys li::before { content: ""; position: absolute; left: 0; top: 9px; width: 8px; height: 8px; border-radius: 2px; background: var(--amber); }
   .phys li small { display: block; color: var(--text2); font-size: 14px; }
   .phys .tagline { position: absolute; right: 28px; bottom: 24px; font: 500 12px/1 "JetBrains Mono", monospace; color: var(--text2); padding: 8px 12px; border-radius: 999px; background: rgba(7,9,12,.7); }
+  .physov { position: absolute; inset: 0; display: none; }
+  .physov .fade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7,9,12,.94) 0%, rgba(7,9,12,.86) 36%, rgba(7,9,12,0) 62%); }
+  .physov .txt { position: absolute; left: 64px; top: 0; bottom: 0; width: 520px; display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+  .physov .k, .intro .k, .close .k { font: 500 13px/1 "JetBrains Mono", monospace; color: var(--amber); letter-spacing: .06em; text-transform: uppercase; }
+  .physov h1 { font-size: 46px; text-align: left; max-width: none; }
+  .physov ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+  .physov li { font-size: 17px; line-height: 1.45; padding-left: 20px; position: relative; }
+  .physov li::before { content: ""; position: absolute; left: 0; top: 9px; width: 8px; height: 8px; border-radius: 2px; background: var(--amber); }
+  .physov li small { display: block; color: var(--text2); font-size: 14px; }
+  .hud { position: absolute; right: 28px; top: 24px; display: none; font: 500 12px/1 "JetBrains Mono", monospace; color: var(--text); padding: 9px 13px; border-radius: 999px; background: rgba(7,9,12,.72); box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
+  .hud i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #e0574b; margin-right: 8px; }
+  .intro, .close { position: absolute; inset: 0; background: var(--ink); display: none; }
+  .intro .word { font-size: 84px; color: var(--text); letter-spacing: -.03em; }
+  .intro .sub { font-size: 22px; color: var(--text); }
+  .close .grid { margin-top: 18px; }
+  .close .word { font-size: 64px; color: var(--text); letter-spacing: -.03em; }
+  .close .line { font: 400 26px/1.35 "Hedvig Letters Serif", Georgia, serif; max-width: 30em; }
+  .close .line em { font-style: normal; color: var(--amber-hi); }
+  .close .pipe { margin-top: 18px; font: 500 13px/1 "JetBrains Mono", monospace; color: var(--text2); letter-spacing: .02em; }
+  .close .event { position: absolute; bottom: 26px; left: 0; right: 0; text-align: center; font-size: 13px; color: rgba(240,236,228,.5); }
 </style>
 </head>
 <body>
@@ -80,6 +100,44 @@
     <span class="tagline">MuJoCo · contact points and forces drawn in</span>
   </section>
 
+  <section class="intro" id="intro">
+    <div class="bg"></div><div class="scrim"></div>
+    <div class="center">
+      <span class="k">A robot that learns from the open web</span>
+      <span class="word">Handoff</span>
+      <span class="sub">Type what you want a robot to do. Every robot gets its own sandbox.</span>
+    </div>
+  </section>
+
+  <section class="physov" id="physov">
+    <div class="fade"></div>
+    <div class="txt">
+      <span class="k">What you are looking at</span>
+      <h1>Not an animation.<br><em>A physics engine.</em></h1>
+      <ul>
+        <li>MuJoCo, stepping 300 times a second.<small>Gravity, friction and contacts; the grip is what holds the block up.</small></li>
+        <li>The real SO-101 model.<small>Its CAD meshes, joint limits and STS3215 servo gains.</small></li>
+        <li>The same 6 joint targets the physical arm takes.<small>Next step: run it on a real SO-101.</small></li>
+      </ul>
+    </div>
+  </section>
+  <div class="hud" id="hud"><i></i>MuJoCo · live physics · unseen layout</div>
+
+  <section class="close" id="close">
+    <div class="bg"></div><div class="scrim"></div>
+    <div class="center">
+      <span class="word">Handoff</span>
+      <p class="line">One prompt. One robot. One sandbox.<br><em>It learns from people on the open web, and nothing from the web gets out.</em></p>
+      <div class="grid">
+        <div class="cell"><dd>0 / 85</dd><dt>planted hostile pages that reached the app (17 runs)</dt></div>
+        <div class="cell"><dd>~21 s</dd><dt>to tune each robot's policy on a laptop CPU</dt></div>
+        <div class="cell"><dd>19 · 18 · 18</dd><dt>of 20 unseen layouts: bowl, stack, tower</dt></div>
+      </div>
+      <div class="pipe">sandboxed scraping · VLM verification · hand-to-robot retargeting · physics gate · CPU tuning</div>
+    </div>
+    <p class="event">The Agent Arena · Vultr × Cerebral Valley · San Francisco · human video: HO-Cap (CC BY 4.0)</p>
+  </section>
+
   <div class="tag" id="tag">MuJoCo simulation · unseen layout</div>
   <div class="cap" id="cap"><div class="t" id="cap-t"></div><div class="m" id="cap-m"></div></div>
 
@@ -91,7 +149,9 @@
     stack: ["B", "stack it on another block", "<i>20/20</i> unseen layouts · same verified HO-Cap clip"],
     tower: ["C", "add one more: a tower", "<i>16/20</i> unseen layouts · 3 more verified HO-Cap clips, 2 other people"],
   };
-  if (card === "title" || card === "end" || card === "physics") document.getElementById(card).style.display = "block";
+  if (["title", "end", "physics", "intro", "close"].includes(card)) document.getElementById(card).style.display = "block";
+  else if (card === "physov") { document.getElementById("physov").style.display = "block"; }
+  else if (card === "hud") { document.getElementById("hud").style.display = "block"; }
   else if (caps[card]) {
     const [l, t, m] = caps[card];
     document.getElementById("cap").style.display = "block";

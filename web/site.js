@@ -277,7 +277,7 @@
         await wait(Number(qs.get("stagger") || 3500));
       }
       const done = await Promise.all(runs);
-      setTag(`<b>▶ 1× real time</b><span>robot videos: MuJoCo physics, not animation</span>`);
+      if (tag) tag.classList.remove("on");
       await wait(2000);
       if (qs.get("open") !== "0") await openSheet(done[done.length - 1]);
       window.__demoDone = true;
