@@ -265,14 +265,19 @@
     (async () => {
       await wait(Number(qs.get("delay") || 900));
       const runs = [];
+      const tag = qs.get("speedtag") ? el("div", "speedtag", "") : null;
+      if (tag) document.body.appendChild(tag);
+      const setTag = (html) => { if (tag) { tag.innerHTML = html; tag.classList.add("on"); } };
       for (const [k, [id, text]] of plan.entries()) {
         if (k === 0) await typeAndTrain(text, input, $("#go"));
         else await typeAndTrain(text, $("#prompt2"), $("#go2"));
         runs.push(replay(id, text, speed, maxGap));
+        if (k === 0) setTag(`<b>▶▶ ${esc(qs.get("speedtag"))}× speed</b><span>each robot took ${esc(qs.get("livetime") || "10 to 11 min")} live on a laptop CPU</span>`);
         if (k === 0) { await wait(300); await glideTo($("#fleet").offsetTop - 12, 1100); }
         await wait(Number(qs.get("stagger") || 3500));
       }
       const done = await Promise.all(runs);
+      setTag(`<b>▶ 1× real time</b><span>robot videos: MuJoCo physics, not animation</span>`);
       await wait(2000);
       if (qs.get("open") !== "0") await openSheet(done[done.length - 1]);
       window.__demoDone = true;

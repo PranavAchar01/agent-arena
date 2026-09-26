@@ -247,3 +247,13 @@ body.is-locked { overflow: hidden; }
   .kv { grid-template-columns: repeat(2, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { .hero-img { animation: none; } * { animation-duration: 1ms !important; } }
+
+/* film only: how fast the recording plays */
+.speedtag {
+  position: fixed; right: 20px; top: 20px; z-index: 60; display: flex; flex-direction: column; gap: 3px; padding: 10px 14px;
+  border-radius: 12px; background: rgba(7, 9, 12, 0.86); box-shadow: inset 0 0 0 1px rgba(var(--amber), 0.45), 0 12px 30px -12px #000;
+  opacity: 0; transform: translateY(-6px); transition: opacity 300ms ease, transform 300ms var(--ease-out);
+}
+.speedtag.on { opacity: 1; transform: none; }
+.speedtag b { font: 600 15px/1.1 var(--mono); color: var(--accent-hi); }
+.speedtag span { font: 400 11.5px/1.3 var(--sans); color: var(--text-2); }

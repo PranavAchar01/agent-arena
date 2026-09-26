@@ -29,6 +29,17 @@
   .cell dd { margin: 0; font: 500 30px/1.2 "JetBrains Mono", monospace; color: var(--amber-hi); }
   .cell dt { margin-top: 6px; font-size: 14px; line-height: 1.4; color: var(--text2); }
   .foot { position: absolute; bottom: 26px; left: 0; right: 0; text-align: center; font-size: 13px; color: rgba(240,236,228,.45); }
+  .phys { position: absolute; inset: 0; background: var(--ink); display: none; }
+  .phys .img { position: absolute; inset: 0; background: url("work/physics_bg.png") 70% 50% / cover no-repeat; }
+  .phys .fade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7,9,12,.97) 0%, rgba(7,9,12,.9) 40%, rgba(7,9,12,.15) 70%, rgba(7,9,12,0) 100%); }
+  .phys .txt { position: absolute; left: 64px; top: 0; bottom: 0; width: 560px; display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+  .phys .k { font: 500 13px/1 "JetBrains Mono", monospace; color: var(--amber); letter-spacing: .06em; text-transform: uppercase; }
+  .phys h1 { font-size: 46px; text-align: left; max-width: none; }
+  .phys ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+  .phys li { font-size: 17px; line-height: 1.45; color: var(--text); padding-left: 20px; position: relative; }
+  .phys li::before { content: ""; position: absolute; left: 0; top: 9px; width: 8px; height: 8px; border-radius: 2px; background: var(--amber); }
+  .phys li small { display: block; color: var(--text2); font-size: 14px; }
+  .phys .tagline { position: absolute; right: 28px; bottom: 24px; font: 500 12px/1 "JetBrains Mono", monospace; color: var(--text2); padding: 8px 12px; border-radius: 999px; background: rgba(7,9,12,.7); }
 </style>
 </head>
 <body>
@@ -55,6 +66,20 @@
     <p class="foot">Local prototype · MuJoCo simulation · the policy reads robot state and object positions, not pixels</p>
   </section>
 
+  <section class="phys" id="physics">
+    <div class="img"></div><div class="fade"></div>
+    <div class="txt">
+      <span class="k">What you just watched</span>
+      <h1>Not an animation.<br><em>A physics engine.</em></h1>
+      <ul>
+        <li>Every robot frame is MuJoCo stepping 300 times a second.<small>Gravity, friction and contacts; the grip is what holds the block up.</small></li>
+        <li>The arm is the real SO-101 model.<small>Its CAD meshes, joint limits and STS3215 servo gains.</small></li>
+        <li>The policy sends the same 6 joint targets the physical arm takes.<small>Next step: run it on a real SO-101.</small></li>
+      </ul>
+    </div>
+    <span class="tagline">MuJoCo · contact points and forces drawn in</span>
+  </section>
+
   <div class="tag" id="tag">MuJoCo simulation · unseen layout</div>
   <div class="cap" id="cap"><div class="t" id="cap-t"></div><div class="m" id="cap-m"></div></div>
 
@@ -66,7 +91,7 @@
     stack: ["B", "stack it on another block", "<i>20/20</i> unseen layouts · same verified HO-Cap clip"],
     tower: ["C", "add one more: a tower", "<i>16/20</i> unseen layouts · 3 more verified HO-Cap clips, 2 other people"],
   };
-  if (card === "title" || card === "end") document.getElementById(card).style.display = "block";
+  if (card === "title" || card === "end" || card === "physics") document.getElementById(card).style.display = "block";
   else if (caps[card]) {
     const [l, t, m] = caps[card];
     document.getElementById("cap").style.display = "block";

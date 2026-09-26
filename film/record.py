@@ -22,12 +22,12 @@ FPS = 25
 def cards(p):
     b = p.chromium.launch()
     page = b.new_page(viewport={"width": 1280, "height": 720}, device_scale_factor=1.5)
-    for card in ("title", "end", "place", "stack", "tower"):
+    for card in ("title", "end", "place", "stack", "tower", "physics"):
         page.goto(f"file://{ROOT}/film/cards.html?card={card}")
         page.wait_for_timeout(1500)  # fonts
         page.screenshot(
             path=str(WORK / f"card_{card}.png"),
-            omit_background=card not in ("title", "end"),
+            omit_background=card not in ("title", "end", "physics"),
         )
         print("card", card, flush=True)
     b.close()
@@ -98,7 +98,7 @@ def demo(p, seconds: float, speed: int, gap: int, hold: float = 5.0):
     b = p.chromium.launch()
     page = b.new_context(viewport={"width": 1280, "height": 720}, device_scale_factor=1.5).new_page()
     page.clock.install()
-    page.goto(f"http://127.0.0.1:8800/?demo=1&film=1&speed={speed}&gap={gap}&delay=1200&stagger=3500")
+    page.goto(f"http://127.0.0.1:8800/?demo=1&film=1&speed={speed}&gap={gap}&delay=1200&stagger=3500&speedtag=30")
     page.clock.pause_at(page.evaluate("Date.now()") + 50)
     page.wait_for_timeout(2500)
     ff = subprocess.Popen(["ffmpeg", "-v", "error", "-y", "-f", "image2pipe", "-framerate", str(FPS), "-c:v", "png",
