@@ -73,7 +73,8 @@
     page(e) { feed(`visited ${hostOf(e.url)}${new URL(e.url).pathname}: ${e.videos} video link(s), ${e.scripts_ignored} script(s) never executed`); },
     candidate() {},
     skip(e) { if (/licen/.test(e.reason)) feed(`skip  ${short(e.title, 50)}: ${e.reason}`, "l-no"); },
-    picked(e) { feed(e.seeded ? `seeded run: ${e.n} of ${e.of} open-licence results picked by hand (the VLM still checks each)` : `agent picked ${e.n} of ${e.of} open-licence results by title`, "l-sys"); },
+    warn(e) { feed(e.message, "l-sys"); },
+    picked(e) { if (!e.of) { feed("source this run: an open dataset, HO-Cap (CC BY 4.0), read inside a fresh sandbox", "l-sys"); return; } feed(e.seeded ? `seeded run: ${e.n} of ${e.of} open-licence results picked by hand (the VLM still checks each)` : `agent picked ${e.n} of ${e.of} open-licence results by title`, "l-sys"); },
     download(e) { feed(`fetch ${short(e.title, 60)} (${e.licence})`); },
     clip(e) { bump("downloaded"); feed(`kept  ${short(e.title, 60)} · ${e.seconds}s re-encoded`, "l-ok"); },
     blocked(e) {

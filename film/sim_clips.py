@@ -15,11 +15,8 @@ from arena.sim.scene import Scene
 
 OUT = Path("film/work")
 OUT.mkdir(parents=True, exist_ok=True)
-POLICIES = {
-    "push": "runs/push-override/policy.pt",
-    "place": "runs/place-seeded/policy.pt",
-    "stack": "runs/stack-override/policy.pt",
-}
+POLICIES = {"place": "runs/hocap-place/policy.pt", "stack": "runs/hocap-stack/policy.pt",
+            "tower": "runs/hocap-tower/policy.pt"}
 
 for task, path in POLICIES.items():
     sc = Scene.make(task)

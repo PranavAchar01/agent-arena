@@ -57,7 +57,7 @@ run(
 segs.append(W / "seg_title.mp4")
 run(["-i", W / "app.mp4", "-vf", V, "-c:v", "libx264", "-crf", "18", W / "seg_app.mp4"])
 segs.append(W / "seg_app.mp4")
-for task in ("push", "place", "stack"):
+for task in ("place", "stack", "tower"):
     src = W / f"sim_{task}.mp4"
     speed = max(1.0, dur(src) / 6.0)  # fit the whole episode into ~6 s
     run(

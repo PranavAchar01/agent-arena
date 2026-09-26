@@ -114,6 +114,7 @@ def run(
     plan: dict | None = None,
     pick_titles: list[str] | None = None,
     clip_seconds: int = 40,
+    dataset: dict | None = None,
 ):
     run_dir.mkdir(parents=True, exist_ok=True)
     T = Timer()
@@ -141,7 +142,7 @@ def run(
 
     # phase A: a sandbox searches and lists open-licence candidates (no downloads)
     search_job = {
-        "queries": plan["queries"],
+        "queries": [] if dataset else plan["queries"],
         "include": plan["include"],
         "exclude": plan["exclude"],
         "per_query": 20,
@@ -166,7 +167,9 @@ def run(
     planted = [c for c in found if c.get("source") == "web"]
     # the agent reads the titles (as data) and picks what to download; it can only answer with line numbers
     with T("rank"):
-        if pick_titles:  # seeded run: a human chose the titles; the VLM and every gate still apply
+        if dataset:  # an open dataset instead of web search: nothing to rank
+            chosen = []
+        elif pick_titles:  # seeded run: a human chose the titles; the VLM and every gate still apply
             chosen = [c for c in archive if c["title"] in pick_titles]
         else:
             picks = rank(archive, plan["summary"] or text, task, k=MAX_CLIPS) if archive else []
@@ -190,7 +193,11 @@ def run(
     }
     with T("scrape"):
         manifest = get_runner().run(fetch_job, run_dir, fwd)
-    clips = manifest["clips"]
+        clips = manifest["clips"]
+        if dataset:
+            # a third throwaway sandbox reads the open dataset's archive (only the frames it needs)
+            ds = get_runner().run({"time_budget_s": 280, **dataset, "user_agent": UA}, run_dir, fwd)
+            clips = clips + ds["clips"]
     summary["scrape"] = {
         "searched": sum(e.get("hits", 0) for e in events if e["type"] == "search"),
         "candidates": sum(1 for e in events if e["type"] == "candidate"),

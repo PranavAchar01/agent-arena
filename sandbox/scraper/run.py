@@ -342,6 +342,13 @@ def main():
         caps=job.get("caps", {}),
     )
     client = httpx.Client(headers={"User-Agent": job.get("user_agent") or UA}, follow_redirects=False)
+    if job.get("dataset") == "hocap":
+        from dataset import hocap
+        kept = hocap(job, emit, OUT, reencode, stills, lambda: time.time() < deadline)
+        with open(f"{OUT}/manifest.json", "w") as f:
+            json.dump({"clips": kept}, f, indent=1)
+        emit("done", kept=len(kept), candidates=len(kept))
+        return
     cands, seen = [], set()
     if job.get("fetch"):
         for c in job["fetch"][:16]:

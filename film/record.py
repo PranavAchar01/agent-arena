@@ -22,7 +22,7 @@ FPS = 25
 def cards(p):
     b = p.chromium.launch()
     page = b.new_page(viewport={"width": 1280, "height": 720}, device_scale_factor=1.5)
-    for card in ("title", "end", "push", "place", "stack"):
+    for card in ("title", "end", "place", "stack", "tower"):
         page.goto(f"file://{ROOT}/film/cards.html?card={card}")
         page.wait_for_timeout(1500)  # fonts
         page.screenshot(
@@ -40,7 +40,7 @@ def app(p, seconds: float):
     )
     page = ctx.new_page()
     page.clock.install()
-    page.goto("http://127.0.0.1:8800/?run=place-seeded&speed=8&film=1&delay=700")
+    page.goto("http://127.0.0.1:8800/?run=hocap-place&speed=10&film=1&delay=700")
     page.clock.pause_at(page.evaluate("Date.now()") + 50)  # freeze page time; only run_for advances it
     page.wait_for_timeout(
         2500

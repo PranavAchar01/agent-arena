@@ -189,7 +189,7 @@ def plan(sc: Scene, shape: MotionShape):
     # the human's move: chord from the grasped block to the release point, arcing by the human's lift profile.
     # A pick is lifted clear before it travels; the human's own lift profile decides how high.
     clear_z = {"place": BOWL_WALL_H + HALF + 0.015, "stack": 2 * BASE_HALF + HALF + 0.015,
-               "unjar": JAR_WALL_H + HALF + 0.015, "tower": 2 * TOWER_HALF + 3 * HALF + 0.012}[sc.task]
+               "unjar": JAR_WALL_H + HALF + 0.015, "tower": 2 * TOWER_HALF + 3 * HALF + 0.025}[sc.task]
     a3 = np.array([*b_c[:2], b_c[2]])
     e3 = t_c
     Lxy = float(np.linalg.norm(e3[:2] - a3[:2]))

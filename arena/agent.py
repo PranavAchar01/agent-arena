@@ -11,16 +11,17 @@ from __future__ import annotations
 from .llm import chat, parse_json
 
 FAMILIES = {
-    "push": "slide an object across the table to a spot (push, nudge, slide)",
-    "place": "pick an object up and put it into a container (bowl, box, basket, cup)",
-    "stack": "pick an object up and set it on top of another (stack blocks, cups, build a tower)",
+    "place": "pick an object up and put it in a bowl",
+    "stack": "pick an object up and set it on top of another",
+    "tower": "add one more object on top of a small stack, building a tower",
 }
-# Everyday activities whose hand motion is the same, which open archives actually have footage of
+# The same hand motion (pick up, carry, set down) appears in every one of these; open datasets hold real footage of it
 ANALOGS = {
-    "push": "sliding pieces in board games (chess, checkers), sliding-tile puzzles, table shuffleboard (sjoelen)",
-    "place": "chess or go moves (lift a piece, set it down), putting go stones from a bowl, cooking, sorting",
-    "stack": "sport/speed stacking of cups, building with Lego or wooden blocks, Jenga",
+    "place": "tabletop pick-and-place of everyday objects, putting things into a bowl or box",
+    "stack": "pick-and-place onto another object, stacking cups or blocks",
+    "tower": "pick-and-place onto a stack, building a tower of blocks or cups",
 }
+
 
 PROMPT = """You plan a web search for openly licensed videos of a PERSON doing a tabletop task with their hand, to
 teach a small robot arm (SO-101, one gripper). The user wrote: "{text}"
@@ -33,8 +34,8 @@ Everyday activities with the same hand motion, which open archives actually hold
 Reply with JSON only:
 {{"family": one of {keys}, "summary": "<the task in 3-6 words>",
   "queries": [8 SHORT queries of 1-3 words each (archive search engines match every word, so long queries find
-              nothing). Include everyday activities that contain the same hand motion, e.g. board-game moves,
-              cup stacking, building with toy bricks, cooking (adding things to a bowl), cup-and-ball tricks],
+              nothing). Include everyday activities that contain the same hand motion, e.g. tabletop pick-and-place,
+              stacking wooden or toy blocks, block towers, taking blocks out of a box or jar],
   "include": [10-16 lowercase single words or short phrases; a relevant title contains at least one],
   "exclude": [8-12 lowercase terms that signal an off-task video, e.g. microscopy, cell, protein, trailer, gameplay, animation]}}"""
 
@@ -60,8 +61,8 @@ def plan(text: str) -> dict:
 
 
 RANK = """You choose which search results to download for a robot-learning dataset. Goal: videos where ONE person's
-hand does this motion on a table: {family_def} (task: "{task}"). Analogues are welcome (chess moves for placing,
-cup stacking or toy bricks for stacking, sliding a cup for pushing). Prefer close-up, real footage of hands.
+hand does this motion on a table: {family_def} (task: "{task}"). Block-like analogues are welcome (toy bricks,
+cubes, cups); board games are not. Prefer close-up, real footage of hands.
 Reject machines and robots doing it (we need HUMAN hands), science imagery, buildings, landscapes, sports
 fields, news, animation, lectures, gameplay. A vision model checks every download, so include titles that plausibly show real hands doing
 the motion or an analogue ({analogs}); skip only clear misses.

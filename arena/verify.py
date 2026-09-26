@@ -25,9 +25,9 @@ Accept ONLY if ALL hold:
 3. object: small graspable objects (blocks, cups, pieces, bricks, toys) are visible;
 4. activity: the person is doing this kind of motion during the video (fast motions fall between stills; judge
    the activity, e.g. a tower growing across stills means stacking is happening);
-5. match: the activity is the same kind of motion as the task (analogues count: moving a chess piece is a
-   place motion, stacking cups or building with Lego/toy bricks (pressing one piece onto another) is a stack
-   motion, sliding a piece or cup across a table is a push motion). Judge the kind of hand motion, not the goal.
+5. match: the activity is the same kind of motion as the task (a real hand picking up any small everyday object, carrying it and setting it down counts for place,
+   stack and tower: the robot learns the hand's pick-carry-set-down motion). Judge the kind of hand motion only.
+   Do NOT reject because the scene has no bowl, block or stack: the robot's own scene supplies the goal.
 
 Reply with JSON only:
 {{"accept": true|false, "checks": {{"person": bool, "hand": bool, "object": bool, "activity": bool, "match": bool}},
@@ -35,9 +35,11 @@ Reply with JSON only:
   "reason": "<one short sentence>"}}"""
 
 DEFS = {
+    "unjar": "reach into a container, take a block out and set it down outside the container",
+    "stack": "pick a block up and set it on top of another block",
+    "tower": "pick a block up and set it on top of a stack of blocks",
     "push": "slide an object across a surface without lifting it",
     "place": "pick an object up and put it down somewhere else or into a container",
-    "stack": "pick an object up and set it on top of another object",
 }
 
 

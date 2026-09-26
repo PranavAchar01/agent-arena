@@ -37,7 +37,7 @@
     <div class="center">
       <span class="word">Handoff</span>
       <h1>I don't know what I want my robot to do yet.<br><em>So it learns from people on the open web.</em></h1>
-      <span class="sub">Openly licensed video, scraped in a throwaway sandbox, checked by a VLM, learned by an SO-101.</span>
+      <span class="sub">Openly licensed human video, pulled in a throwaway sandbox, checked by a VLM, learned by an SO-101.</span>
     </div>
   </section>
 
@@ -47,9 +47,9 @@
       <span class="word">Handoff</span>
       <h1>First A. Then B. Then C.</h1>
       <div class="grid">
-        <div class="cell"><dd>0 / 45</dd><dt>planted hostile pages that reached the app (5 per run, 9 runs)</dt></div>
+        <div class="cell"><dd>0 / 70</dd><dt>planted hostile pages that reached the app (5 per run, 14 runs)</dt></div>
         <div class="cell"><dd>~1 min</dd><dt>to train each policy on a laptop CPU</dt></div>
-        <div class="cell"><dd>15 · 13 · 19</dd><dt>of 20 unseen layouts for push, place, stack</dt></div>
+        <div class="cell"><dd>17 · 20 · 16</dd><dt>of 20 unseen layouts for bowl, stack, tower</dt></div>
       </div>
     </div>
     <p class="foot">Local prototype · MuJoCo simulation · the policy reads robot state and object positions, not pixels</p>
@@ -62,9 +62,9 @@
   const q = new URLSearchParams(location.search);
   const card = q.get("card");
   const caps = {
-    push: ["A", "push the block onto the target", "<i>15/20</i> unseen layouts · hand motion from public-domain video"],
-    place: ["B", "put the block in the bowl", "<i>13/20</i> unseen layouts · learned from one CC BY-SA chess video · 61 s on CPU"],
-    stack: ["C", "stack the block on the blue block", "<i>19/20</i> unseen layouts · hand motion from public-domain video"],
+    place: ["A", "put the block in the bowl", "<i>17/20</i> unseen layouts · hand motion from HO-Cap video (CC BY 4.0) · 21 s on CPU"],
+    stack: ["B", "stack it on another block", "<i>20/20</i> unseen layouts · same verified HO-Cap clip"],
+    tower: ["C", "add one more: a tower", "<i>16/20</i> unseen layouts · 3 more verified HO-Cap clips, 2 other people"],
   };
   if (card === "title" || card === "end") document.getElementById(card).style.display = "block";
   else if (caps[card]) {

@@ -11,11 +11,19 @@ from __future__ import annotations
 
 import os
 
+import subprocess
+
 import httpx
 
 
+def _keychain(service: str) -> str | None:
+    """Read a secret Pranav stored with: security add-generic-password -s pexels-api -a pranav -w"""
+    r = subprocess.run(["security", "find-generic-password", "-s", service, "-w"], capture_output=True, text=True)
+    return r.stdout.strip() or None
+
+
 def pexels(queries: list[str], per_query: int = 6) -> list[dict]:
-    key = os.environ.get("PEXELS_API_KEY")
+    key = os.environ.get("PEXELS_API_KEY") or _keychain("pexels-api")
     if not key:
         return []
     out, seen = [], set()

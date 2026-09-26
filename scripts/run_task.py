@@ -11,4 +11,4 @@ def emit(e):
     log.write(json.dumps(e, default=str) + "\n"); log.flush()
     if e["type"] not in ("candidate", "skip", "train"):
         print(json.dumps(e, default=str)[:260], flush=True)
-run(text, d, emit)
+run(text, d, emit, family=sys.argv[3] if len(sys.argv) > 3 else None)

@@ -49,6 +49,7 @@ class DockerRunner(SandboxRunner):
     def run(self, job, out_dir, on_event):
         out_dir.mkdir(parents=True, exist_ok=True)
         cname = f"arena-sbx-{uuid.uuid4().hex[:8]}"
+        seconds = min(int(job.get("sandbox_seconds", CAPS["seconds"])), 900)
         scratch = Path(tempfile.mkdtemp(prefix="arena-out-"))
         os.chmod(scratch, 0o777)
         cmd = [
@@ -83,8 +84,8 @@ class DockerRunner(SandboxRunner):
         ]
         job = {
             **job,
-            "caps": CAPS,
-            "time_budget_s": min(job.get("time_budget_s", 240), CAPS["seconds"] - 20),
+            "caps": {**CAPS, "seconds": seconds},
+            "time_budget_s": min(job.get("time_budget_s", 240), seconds - 20),
         }
         t0 = time.time()
         on_event(
@@ -92,7 +93,7 @@ class DockerRunner(SandboxRunner):
                 "type": "sandbox_start",
                 "backend": self.name,
                 "container": cname,
-                "caps": CAPS,
+                "caps": {**CAPS, "seconds": seconds},
             }
         )
         p = subprocess.Popen(
@@ -103,7 +104,7 @@ class DockerRunner(SandboxRunner):
             text=True,
         )
         killer = threading.Timer(
-            CAPS["seconds"],
+            seconds,
             lambda: subprocess.run(["docker", "kill", cname], capture_output=True),
         )
         killer.start()

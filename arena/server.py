@@ -41,7 +41,7 @@ _live: dict[str, list[dict]] = {}
 
 class NewRun(BaseModel):
     text: str = Field(min_length=8, max_length=200)
-    family: str | None = Field(default=None, pattern="^(push|place|stack)$")
+    family: str | None = Field(default=None, pattern="^(push|place|stack|unjar|tower)$")
 
 
 def _events(rid: str) -> list[dict]:
