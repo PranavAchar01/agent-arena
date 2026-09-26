@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw
 
 from .llm import chat, parse_json
 
-RUBRIC = """You are the data-quality gate for a robot-learning pipeline. The image is a contact sheet of 8 stills
+RUBRIC = """You are the data-quality gate for a robot-learning pipeline. The image is a contact sheet of evenly spaced stills
 (timestamps in seconds, top-left of each tile) from one short video. The robot must learn: "{task}"
 (task family: {family}; {family_def}).
 
@@ -25,7 +25,8 @@ Accept ONLY if ALL hold:
 4. activity: the person is doing this kind of motion during the video (fast motions fall between stills; judge
    the activity, e.g. a tower growing across stills means stacking is happening);
 5. match: the activity is the same kind of motion as the task (analogues count: moving a chess piece is a
-   place motion, stacking cups or bricks is a stack motion, sliding a cup across a table is a push motion).
+   place motion, stacking cups or building with Lego/toy bricks (pressing one piece onto another) is a stack
+   motion, sliding a piece or cup across a table is a push motion). Judge the kind of hand motion, not the goal.
 
 Reply with JSON only:
 {{"accept": true|false, "checks": {{"person": bool, "hand": bool, "object": bool, "activity": bool, "match": bool}},
@@ -43,7 +44,7 @@ def contact_sheet(
     frames: list[dict], frame_dir: Path, out: Path, tile_w: int = 320
 ) -> Path:
     tiles = []
-    for fr in frames[:8]:
+    for fr in frames[:12]:
         im = Image.open(frame_dir / fr["file"]).convert("RGB")
         im = im.resize((tile_w, int(im.height * tile_w / im.width)))
         d = ImageDraw.Draw(im)

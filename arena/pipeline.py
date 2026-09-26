@@ -112,6 +112,8 @@ def run(
     family: str | None = None,
     hostile: bool = True,
     plan: dict | None = None,
+    pick_titles: list[str] | None = None,
+    clip_seconds: int = 40,
 ):
     run_dir.mkdir(parents=True, exist_ok=True)
     T = Timer()
@@ -164,10 +166,11 @@ def run(
     planted = [c for c in found if c.get("source") == "web"]
     # the agent reads the titles (as data) and picks what to download; it can only answer with line numbers
     with T("rank"):
-        picks = (
-            rank(archive, plan["summary"] or text, task, k=MAX_CLIPS) if archive else []
-        )
-    chosen = [archive[i] for i in picks]
+        if pick_titles:  # seeded run: a human chose the titles; the VLM and every gate still apply
+            chosen = [c for c in archive if c["title"] in pick_titles]
+        else:
+            picks = rank(archive, plan["summary"] or text, task, k=MAX_CLIPS) if archive else []
+            chosen = [archive[i] for i in picks]
     emit(
         {
             "type": "picked",
@@ -181,6 +184,7 @@ def run(
         "queries": [],
         "fetch": chosen + planted,
         "max_clips": MAX_CLIPS + len(planted),
+        "clip_seconds": clip_seconds,
         "user_agent": UA,
         "time_budget_s": 240,
     }

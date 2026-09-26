@@ -241,6 +241,20 @@ def stills(clip: str, cid: str, dur: float, n: int = 8):
 def fetch_media(client, c, deadline) -> str | None:
     tmp = f"/tmp/{hashlib.sha1(c['page'].encode()).hexdigest()[:10]}"
     if c["source"] == "internet-archive":
+        ident = c["page"].rstrip("/").split("/")[-1]
+        meta = client.get(f"https://archive.org/metadata/{quote(ident)}", timeout=15).json()
+        vids = [f for f in meta.get("files", []) if str(f.get("name", "")).lower().endswith((".mp4", ".ogv", ".webm"))
+                and f.get("size")]
+        if meta.get("metadata", {}).get("licenseurl"):
+            c["licence"] = meta["metadata"]["licenseurl"]
+        if vids:
+            f = min(vids, key=lambda f: int(f["size"]))
+            url = f"https://archive.org/download/{quote(ident)}/{quote(f['name'])}"
+            rng = {"Range": f"bytes=0-{MAX_MEDIA_BYTES - 1}"} if int(f["size"]) > MAX_MEDIA_BYTES else None
+            final, body, _ = guarded_get(client, url, MAX_MEDIA_BYTES, deadline, rng)
+            with open(tmp, "wb") as fh:
+                fh.write(body)
+            return tmp
         import yt_dlp
 
         opts = {
@@ -414,7 +428,7 @@ def main():
             src = fetch_media(client, c, min(deadline, time.time() + 60))
             if not src:
                 raise Blocked("no downloadable file under the size cap")
-            dur = reencode(src, f"{OUT}/clips/{cid}.mp4", MAX_SECONDS)
+            dur = reencode(src, f"{OUT}/clips/{cid}.mp4", int(job.get("clip_seconds", MAX_SECONDS)))
             if src.startswith("/tmp/"):
                 os.remove(src)
             if dur < 2:
@@ -440,7 +454,7 @@ def main():
             id=cid,
             clip=f"clips/{cid}.mp4",
             seconds=round(dur, 2),
-            frames=stills(f"{OUT}/clips/{cid}.mp4", cid, dur),
+            frames=stills(f"{OUT}/clips/{cid}.mp4", cid, dur, 12 if dur > 50 else 8),
         )
         kept.append(c)
         emit(

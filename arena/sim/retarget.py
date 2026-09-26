@@ -9,7 +9,10 @@ is stretched by TIME_SCALE because an STS3215 servo arm is slower than a hand.
 
 Declared robot-side additions (the same for every clip): a reach from home to above the block, the grasp
 (descend, close with a dwell), and after the move the release (open with a dwell), a retreat and the return home.
-Everything between grasp and release is the human's shape.
+Between grasp and release the path is the human's shape (speed profile, arc, sideways drift, duration), with one
+more declared addition for place and stack: a clearance floor, so the carried block never dips below the bowl wall
+or the base block (plus 1.5 cm) while it travels. A human's lift is measured in hand lengths and is often smaller
+than the robot's obstacle; where the human arcs higher than the floor, the human's arc wins.
 
 The replay is a full physics rollout: the block sits on a free joint, the jaws hold it by friction, nothing is
 teleported. An episode enters the dataset only if the task succeeds in that rollout.
@@ -22,7 +25,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .ik import IK
-from .scene import BASE_HALF, DT, GRIP_CLOSED, HALF, HOME, Scene
+from .scene import BASE_HALF, BOWL_WALL_H, DT, GRIP_CLOSED, HALF, HOME, Scene
 
 TIME_SCALE = 2.0
 GRIP_OPEN_CMD = 0.7  # ~5 cm between the pads
@@ -184,6 +187,7 @@ def plan(sc: Scene, shape: MotionShape):
         )
     # the human's move: chord from the grasped block to the release point, arcing by the human's lift profile.
     # A pick is lifted clear before it travels; the human's own lift profile decides how high.
+    clear_z = (BOWL_WALL_H + HALF + 0.015) if sc.task == "place" else (2 * BASE_HALF + HALF + 0.015)
     a3 = np.array([*b_c[:2], b_c[2]])
     e3 = t_c
     Lxy = float(np.linalg.norm(e3[:2] - a3[:2]))
@@ -191,6 +195,7 @@ def plan(sc: Scene, shape: MotionShape):
         c = a3 + (e3 - a3) * ui
         c[:2] += left * si * M_PER_HAND
         c[2] += li * M_PER_HAND
+        c[2] = max(c[2], _floor(ui, clear_z, e3[2]))
         pts.append((site_for(c, CENTRE_GRASP), close, GRIP_CLOSED))
     r = pts[-1][0]
     for _ in range(int(0.3 / DT)):
@@ -206,6 +211,16 @@ def plan(sc: Scene, shape: MotionShape):
     for p in _seg(r, r + [0, 0, 0.025], REACH_SPEED / 2):
         pts.append((p, close, GRIP_OPEN_CMD))
     return pts
+
+
+def _floor(u: float, peak: float, end: float) -> float:
+    """Clearance floor for the carried block's centre: rise over the first 30 %, hold, settle to the release height."""
+    sm = lambda x: 3 * x**2 - 2 * x**3  # noqa: E731
+    if u < 0.3:
+        return peak * sm(u / 0.3)
+    if u < 0.8:
+        return peak
+    return peak + (end - peak) * sm((u - 0.8) / 0.2)
 
 
 def _yaw(sc: Scene) -> float:
