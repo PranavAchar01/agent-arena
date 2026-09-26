@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .ik import IK
-from .scene import BASE_HALF, BOWL_WALL_H, DT, GRIP_CLOSED, HALF, HOME, Scene
+from .scene import BASE_HALF, BOWL_WALL_H, DT, GRIP_CLOSED, HALF, HOME, JAR_WALL_H, TOWER_HALF, Scene
 
 TIME_SCALE = 2.0
 GRIP_OPEN_CMD = 0.7  # ~5 cm between the pads
@@ -163,7 +163,8 @@ def plan(sc: Scene, shape: MotionShape):
     def site_for(center, c):
         return center + GRIP_DEPTH * down - c * ez
 
-    release_z = (HALF + 0.012) if sc.task == "place" else (2 * BASE_HALF + HALF + 0.004)
+    release_z = {"place": HALF + 0.012, "stack": 2 * BASE_HALF + HALF + 0.004, "unjar": HALF + 0.006,
+                 "tower": 2 * TOWER_HALF + 3 * HALF + 0.004}[sc.task]
     b_c = b.copy()
     t_c = np.array([*t[:2], release_z])
     home_site = sc.site()
@@ -187,7 +188,8 @@ def plan(sc: Scene, shape: MotionShape):
         )
     # the human's move: chord from the grasped block to the release point, arcing by the human's lift profile.
     # A pick is lifted clear before it travels; the human's own lift profile decides how high.
-    clear_z = (BOWL_WALL_H + HALF + 0.015) if sc.task == "place" else (2 * BASE_HALF + HALF + 0.015)
+    clear_z = {"place": BOWL_WALL_H + HALF + 0.015, "stack": 2 * BASE_HALF + HALF + 0.015,
+               "unjar": JAR_WALL_H + HALF + 0.015, "tower": 2 * TOWER_HALF + 3 * HALF + 0.012}[sc.task]
     a3 = np.array([*b_c[:2], b_c[2]])
     e3 = t_c
     Lxy = float(np.linalg.norm(e3[:2] - a3[:2]))

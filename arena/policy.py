@@ -150,7 +150,7 @@ class Runner:
 def eval_layouts(task: str, n: int = N_EVAL):
     from .layouts import sample
 
-    rng = np.random.default_rng(EVAL_SEED + {"push": 0, "place": 1, "stack": 2}[task])
+    rng = np.random.default_rng(EVAL_SEED + {"push": 0, "place": 1, "stack": 2, "unjar": 3, "tower": 4}[task])
     return [sample(task, rng) for _ in range(n)]
 
 

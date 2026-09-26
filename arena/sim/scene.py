@@ -26,7 +26,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 MJCF = ROOT / "vendor" / "so101" / "so101_new_calib.xml"
 
-TASKS = ("push", "place", "stack")
+TASKS = ("push", "place", "stack", "unjar", "tower")
+GRASP_TASKS = ("place", "stack", "unjar", "tower")
+JAR_R, JAR_WALL_H, JAR_FLOOR = 0.065, 0.028, 0.004  # a wide, low jar the jaws can reach into
+TOWER_HALF = 0.015  # tower: three equal 3 cm blocks (blue, green, red)
 JOINTS = [
     "shoulder_pan",
     "shoulder_lift",
@@ -198,7 +201,7 @@ def build(task: str) -> mujoco.MjModel:
                 quat=[np.cos(a / 2), 0, 0, np.sin(a / 2)],
                 material="bowl",
             )
-    else:
+    elif task == "stack":
         target = w.add_body(name="target", pos=[0.25, 0, BASE_HALF])
         target.add_freejoint(name="target_free")
         target.add_geom(
@@ -211,7 +214,35 @@ def build(task: str) -> mujoco.MjModel:
             condim=4,
         )
 
-    if task in ("place", "stack"):
+    if task == "unjar":
+        # the jar travels with the block (it starts inside); the taped square is where it must end up
+        jar = w.add_body(name="jar", mocap=True, pos=[0.18, 0.08, 0])
+        jar.add_geom(name="jar_base", type=mujoco.mjtGeom.mjGEOM_CYLINDER, size=[JAR_R + BOWL_WALL_T, JAR_FLOOR / 2, 0],
+                     pos=[0, 0, JAR_FLOOR / 2], material="bowl")
+        seg = (JAR_R + BOWL_WALL_T / 2) * np.tan(np.pi / BOWL_SEG) * 1.05
+        for i in range(BOWL_SEG):
+            a = 2 * np.pi * i / BOWL_SEG
+            r = JAR_R + BOWL_WALL_T / 2
+            jar.add_geom(name=f"jar_wall{i}", type=mujoco.mjtGeom.mjGEOM_BOX, size=[BOWL_WALL_T / 2, seg, JAR_WALL_H / 2],
+                         pos=[r * np.cos(a), r * np.sin(a), JAR_WALL_H / 2], quat=[np.cos(a / 2), 0, 0, np.sin(a / 2)],
+                         material="bowl")
+        t, s_, h = TAPE_HALF, 0.005, 0.0005
+        target = w.add_body(name="target", mocap=True, pos=[0.25, 0, 0])
+        for i, (px, py, sx, sy) in enumerate([(t, 0, s_, t + s_), (-t, 0, s_, t + s_), (0, t, t + s_, s_), (0, -t, t + s_, s_)]):
+            target.add_geom(name=f"tape{i}", type=mujoco.mjtGeom.mjGEOM_BOX, size=[sx, sy, h], pos=[px, py, h],
+                            material="blue", contype=0, conaffinity=0)
+    if task == "tower":
+        spec.add_material(name="green", rgba=[0.3, 0.72, 0.42, 1])
+        target = w.add_body(name="target", pos=[0.25, 0, TOWER_HALF])
+        target.add_freejoint(name="target_free")
+        target.add_geom(name="base_block", type=mujoco.mjtGeom.mjGEOM_BOX, size=[TOWER_HALF] * 3, mass=0.1,
+                        material="blue", friction=[0.8, 0.005, 0.0001], condim=4)
+        mid = w.add_body(name="mid", pos=[0.25, 0, 2 * TOWER_HALF + HALF])
+        mid.add_freejoint(name="mid_free")
+        mid.add_geom(name="mid_block", type=mujoco.mjtGeom.mjGEOM_BOX, size=[HALF] * 3, mass=0.03, material="green",
+                     friction=[0.8, 0.005, 0.0001], condim=4)
+
+    if task in GRASP_TASKS:
         for g in spec.geoms:
             if not g.contype:
                 continue
@@ -238,7 +269,7 @@ def build(task: str) -> mujoco.MjModel:
 
     block = w.add_body(name="block", pos=[0.18, 0.08, HALF])
     block.add_freejoint(name="block_free")
-    grasp = task in ("place", "stack")
+    grasp = task in GRASP_TASKS
     block.add_geom(
         name="block_geom",
         type=mujoco.mjtGeom.mjGEOM_BOX,
@@ -310,13 +341,20 @@ class Scene:
         self.data.qpos[self.qadr] = q
         self.data.ctrl[:] = q
         self._set_free("block_free", [block_xy[0], block_xy[1], HALF], block_yaw)
-        if self.task == "stack":
-            self._set_free(
-                "target_free", [target_xy[0], target_xy[1], BASE_HALF], target_yaw
-            )
+        if self.task in ("stack", "tower"):
+            h0 = TOWER_HALF if self.task == "tower" else BASE_HALF
+            self._set_free("target_free", [target_xy[0], target_xy[1], h0], target_yaw)
+            if self.task == "tower":
+                self._set_free("mid_free", [target_xy[0], target_xy[1], 2 * TOWER_HALF + HALF], target_yaw)
         else:
-            self.model.body_pos[self.model.body("target").id][:2] = target_xy
-            self.data.mocap_pos[0][:2] = target_xy
+            tid = self.model.body("target").id
+            self.model.body_pos[tid][:2] = target_xy
+            self.data.mocap_pos[self.model.body_mocapid[tid]][:2] = target_xy
+        if self.task == "unjar":
+            jid = self.model.body("jar").id
+            self.model.body_pos[jid][:2] = block_xy
+            self.data.mocap_pos[self.model.body_mocapid[jid]][:2] = block_xy
+            self._set_free("block_free", [block_xy[0], block_xy[1], JAR_FLOOR + HALF], block_yaw)
         mujoco.mj_forward(self.model, self.data)
 
     def obs(self) -> np.ndarray:
@@ -337,6 +375,13 @@ class Scene:
             return bool(
                 np.linalg.norm(b[:2] - t[:2]) < BOWL_R and b[2] < BOWL_WALL_H + HALF
             )
+        if self.task == "unjar":
+            return bool(np.all(np.abs(b[:2] - t[:2]) < TAPE_HALF) and b[2] < HALF + 0.005)
+        if self.task == "tower":
+            m = self.data.xpos[self.model.body("mid").id]
+            mid_ok = abs(m[2] - (t[2] + TOWER_HALF + HALF)) < 0.006 and np.linalg.norm(m[:2] - t[:2]) < TOWER_HALF + 0.004
+            top_ok = abs(b[2] - (m[2] + 2 * HALF)) < 0.006 and np.linalg.norm(b[:2] - m[:2]) < HALF + 0.004
+            return bool(mid_ok and top_ok)
         on_top = abs(b[2] - (t[2] + BASE_HALF + HALF)) < 0.006
         return bool(
             on_top
