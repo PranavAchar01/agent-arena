@@ -37,6 +37,9 @@ PUSH_BACKOFF = (
     HALF + 0.022
 )  # site distance behind the block centre when the push starts
 REACH_SPEED = 0.12  # m/s for the declared reach / retreat segments
+# Lift and sideways deviation are measured in human hand lengths (wrist to middle knuckle, ~8.5 cm on an adult).
+# The SO-101 is roughly half a human arm's scale, so one hand length of human lift becomes 4.25 cm on the robot.
+M_PER_HAND = 0.085 * 0.5
 
 
 @dataclass
@@ -46,8 +49,8 @@ class MotionShape:
     task: str
     tau: np.ndarray  # normalised time 0..1, K samples
     u: np.ndarray  # progress along the move 0..1 at each tau
-    lift: np.ndarray  # height above the start-end chord / chord length
-    side: np.ndarray  # sideways deviation from the chord / chord length
+    lift: np.ndarray  # height above the start-end chord, in hand lengths
+    side: np.ndarray  # sideways deviation from the chord, in hand lengths
     duration: float  # seconds the human took for the move
     source: str = ""
 
@@ -72,7 +75,7 @@ class MotionShape:
         )
 
 
-def synthetic(task: str, lift: float = 0.35, duration: float = 1.2) -> MotionShape:
+def synthetic(task: str, lift: float = 1.2, duration: float = 1.2) -> MotionShape:
     """A textbook minimum-jerk shape. Used only by tests to check the robot side; never written to a dataset."""
     tau = np.linspace(0, 1, 50)
     u = 10 * tau**3 - 15 * tau**4 + 6 * tau**5
@@ -134,7 +137,7 @@ def plan(sc: Scene, shape: MotionShape):
             pts.append((p, close, grip))
         L = float(np.linalg.norm(end - start))
         for ui, si in zip(u, side):
-            xy = start + (end - start) * ui + left * si * L
+            xy = start + (end - start) * ui + left * si * M_PER_HAND
             pts.append((np.array([*xy, PUSH_Z]), close, grip))
         last = pts[-1][0]
         for p in _hold(last, 0.3) + _seg(last, last + [0, 0, 0.03], REACH_SPEED):
@@ -186,8 +189,8 @@ def plan(sc: Scene, shape: MotionShape):
     Lxy = float(np.linalg.norm(e3[:2] - a3[:2]))
     for ui, li, si in zip(u, lift, side):
         c = a3 + (e3 - a3) * ui
-        c[:2] += left * si * Lxy
-        c[2] += li * Lxy
+        c[:2] += left * si * M_PER_HAND
+        c[2] += li * M_PER_HAND
         pts.append((site_for(c, CENTRE_GRASP), close, GRIP_CLOSED))
     r = pts[-1][0]
     for _ in range(int(0.3 / DT)):
