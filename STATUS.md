@@ -24,7 +24,11 @@ Local only. Never push. Resume from here after an app restart.
 - Analogs with real volume on Commons: chess (many CC0 tournament videos), Go stones, speed stacking, Lego building.
 - Optional Pexels source (app-side key, PEXELS_API_KEY) written but UNTESTED (no key; he must create it).
 
-## Next
-- [ ] Rerun all three with analog-aware planner/ranker
-- [ ] docs/SCRAPER.md, docs/STATS.md (+ VLM accuracy hand-check, LoRA CPU measurement)
-- [ ] Report to Pranav, wait for confirmation before filming (Phase 2)
+- [x] Reruns (runs/push|place|stack): 0 verified clips from fully automatic search, all tasks
+- [x] Seeded runs (runs/*-seeded): place 1 clip verified -> 136 episodes -> 13/20; push/stack 0 verified
+- [x] Override runs (runs/*-override, scripts/downstream.py): push 15/20, place 15/20, stack 19/20
+- [x] Verifier hand-check 27/30 (0 TP, 1 FP, 2 FN); LoRA SmolVLM2-500M infeasible here (5 GB, <6 steps in 11 min)
+- [x] docs/SCRAPER.md, docs/STATS.md, README.md
+
+## Phase 1 DONE. Waiting on Pranav's confirmation before Phase 2 (filming). Do not film before his yes.
+Demo replay URLs: http://localhost:8800/?run=place-seeded&speed=8 (best automatic run)

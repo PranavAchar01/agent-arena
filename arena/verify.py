@@ -19,7 +19,8 @@ RUBRIC = """You are the data-quality gate for a robot-learning pipeline. The ima
 (task family: {family}; {family_def}).
 
 Accept ONLY if ALL hold:
-1. person: real camera footage of a person (not animation, not a diagram, not a robot);
+1. person: real camera footage of a person at normal speed (not animation, not a diagram, not a robot, not a
+   time-lapse or sped-up video: if a whole build or task completes implausibly fast across the stills, reject);
 2. hand: a hand is doing the manipulation and is clearly visible in several stills;
 3. object: small graspable objects (blocks, cups, pieces, bricks, toys) are visible;
 4. activity: the person is doing this kind of motion during the video (fast motions fall between stills; judge
