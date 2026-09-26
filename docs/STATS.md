@@ -215,3 +215,17 @@ motion 40-300 s · dataset 17-60 s · train 18-64 s · eval + video 45-205 s.
 
 Do not claim: a tuned VLM; stroke-, safety- or real-robot results; that the web search finds task footage on its
 own today (it did not).
+
+## 7b. Pretrained ResNet-18 comparison on the HO-Cap data (finished 2026-09-25 21:47)
+
+Same task (bowl), same 50 fixed unseen layouts, camera policy sees a 96x96 overhead frame + joint angles (no object
+positions); state policy gets object positions directly. microsoft/resnet-18 @65a5785d (Apache-2.0).
+
+| variant | trained params | CPU train time | success /50 |
+|---|---|---|---|
+| state MLP from scratch (the shipped policy) | 166,008 | ~21 s | **40** |
+| pretrained ResNet-18 frozen, head trained | 229,752 of 11.4 M | 133 s | 11 |
+| pretrained ResNet-18 fine-tuned end to end | 11.4 M | 2,379 s | 5 |
+
+Verdict: do NOT claim "we fine-tuned a foundation model". The true line: "We tested fine-tuning a pretrained
+ResNet-18 on CPU; our small policy beat it, 40/50 against 11/50 and 5/50, so that is what we ship."
