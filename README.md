@@ -34,7 +34,7 @@ SANDBOX_BACKEND=vultr .venv/bin/python -m uvicorn arena.server:app --port 8800
 ```
 
 Optional: `VULTR_REGION` (sjc), `VULTR_PLAN` (vc2-1c-2gb), `VULTR_SNAPSHOT_ID` (Docker and the image baked in, skips
-the ~2 minute setup), `VULTR_ALLOW_CIDR` (defaults to this machine's public IP).
+the ~2 minute setup), `VULTR_ALLOW_CIDR` (defaults to this machine's public IP; on networks that send SSH out through a different NAT IP, such as Shack15, use `0.0.0.0/0`: SSH stays key-only with a fresh key per box).
 
 Models: LLM_BASE_URL / LLM_MODEL / LLM_API_KEY (+ VLM_* overrides). For Vultr Serverless Inference set
 LLM_BASE_URL=https://api.vultrinference.com/v1 and a model id from `scripts/vultr.py check` (with VULTR_INFERENCE_KEY).

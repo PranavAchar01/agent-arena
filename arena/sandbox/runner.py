@@ -255,6 +255,10 @@ def _fetch_tar(cmd: list[str], dest: Path) -> None:
 
 VULTR_API = "https://api.vultr.com/v2"
 CLOUD_INIT = """#cloud-config
+disable_root: false
+users:
+  - name: root
+    ssh_authorized_keys: [{pubkey}]
 package_update: true
 packages: [docker.io]
 runcmd:
@@ -378,7 +382,10 @@ class VultrRunner(SandboxRunner):
             body["snapshot_id"] = self.snapshot
         else:
             body["os_id"] = self._os_id()
-            body["user_data"] = base64.b64encode(CLOUD_INIT.encode()).decode()
+            cloud = CLOUD_INIT.format(
+                pubkey=json.dumps(kp.with_suffix(".pub").read_text().strip())
+            )
+            body["user_data"] = base64.b64encode(cloud.encode()).decode()
         with self._lock:
             if self._closed:
                 raise BoxKilled("box closed before its VM was created")
@@ -392,7 +399,9 @@ class VultrRunner(SandboxRunner):
                 "region": self.region,
                 "plan": self.plan,
                 "hourly_usd": self.hourly,
-                "firewall": f"inbound 22/tcp from {cidr} only",
+                "firewall": "inbound: SSH only, key auth, fresh key per box"
+                if cidr.prefixlen == 0
+                else f"inbound 22/tcp from {cidr} only",
             }
         )
         ip = self._wait_active()
@@ -475,17 +484,17 @@ class VultrRunner(SandboxRunner):
 
     def _wait_ssh(self, ssh: list[str]) -> None:
         deadline = time.time() + 300
+        last = ""
         while time.time() < deadline:
             check_killed()
-            if (
-                subprocess.run(
-                    [*ssh, "true"], capture_output=True, timeout=30, check=False
-                ).returncode
-                == 0
-            ):
+            r = subprocess.run(
+                [*ssh, "true"], capture_output=True, text=True, timeout=30, check=False
+            )
+            if r.returncode == 0:
                 return
+            last = r.stderr.strip()[-200:]
             time.sleep(5)
-        raise TimeoutError("SSH to the Vultr instance never came up")
+        raise TimeoutError(f"SSH to the Vultr instance never came up: {last}")
 
     def _os_id(self) -> int:
         if os.environ.get("VULTR_OS_ID"):

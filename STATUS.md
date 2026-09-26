@@ -38,5 +38,5 @@ Demo replay URLs: http://localhost:8800/?run=place-seeded&speed=8 (best automati
 - [x] Kill switch (button + POST /api/runs/{id}/kill), hash-chained audit log (download + verify), model_call events
 - [x] Parallel boxes on Vultr (BOX_WORKERS), scripts/vultr.py check|smoke|sweep, tests/test_runner.py (5 pass)
 - [x] Verified locally: live run killed mid-scrape -> container gone, run stops, chain intact
-- [ ] Needs Pranav: Vultr credits redeemed + VULTR_API_KEY exported, then `scripts/vultr.py smoke`
+- [x] Live Vultr smoke passed 09-26: VM ready in 94 s, sandbox ran on it, VM deleted ($0.015). Venue needs VULTR_ALLOW_CIDR=0.0.0.0/0 (SSH egress NAT differs)
 - [ ] Vultr Serverless Inference key + model id (vision model availability unknown)
