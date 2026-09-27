@@ -373,6 +373,69 @@
     return box;
   }
 
+  // ---------- source cards for every robot: the videos with MediaPipe's tracking drawn on, or the pages the rules came from ----------
+  const PAGE_IMG = { "Deep_Blue_versus_Garry_Kasparov": "deep-blue", "Deep_Blue_versus_Kasparov%2C_1997%2C_Game_6": "deep-blue-g6",
+    "Deep_Blue_versus_Kasparov,_1997,_Game_6": "deep-blue-g6", "Tower_of_Hanoi": "hanoi", "Cup_stacking": "cups" };
+  function pageCards(grid, pages) {
+    for (const pg of pages) {
+      const img = PAGE_IMG[pg.url.split("/wiki/")[1]];
+      const card = el("figure", `srccard${pg.used ? " used" : ""}`);
+      card.innerHTML = `<a class="tile page" href="${esc(pg.url)}" target="_blank" rel="noopener">${img ? `<img src="/sources/pages/${img}.jpg" alt="">` : ""}
+          <b class="tile-badge">${esc(pg.badge)}</b></a>
+        <figcaption><b>${esc(pg.title)}</b><span>${esc(pg.meta)}</span></figcaption>`;
+      grid.appendChild(card);
+    }
+  }
+  const HAND = [[0, 1], [1, 2], [0, 3]];  // wrist-knuckle, knuckle-index tip, wrist-thumb tip
+  async function handCards(grid, rid, verdicts, motions) {
+    for (const vd of verdicts) {
+      const track = await fetch(`/sources/${rid}/${vd.id}.json`).then((r) => r.json()).catch(() => ({ frames: [] }));
+      const mine = motions.filter((m) => m.id === vd.id);
+      const good = mine.filter((m) => m.ok);
+      const used = good.length > 0;
+      const card = el("figure", `srccard${used ? " used" : ""}`);
+      const tile = el("div", `tile ${used ? "ok" : "no"}`);
+      tile.innerHTML = `<video muted playsinline preload="auto" src="/runs/${esc(rid)}/clips/${esc(vd.id)}.mp4"></video><canvas></canvas>
+        <b class="tile-badge">${used ? "copied by the robot" : vd.accept ? "not copied" : "rejected"}</b>`;
+      const v = $("video", tile), cv = $("canvas", tile);
+      const frames = track.frames || [];
+      const draw = () => {
+        let f = null; for (const x of frames) { if (x[0] <= v.currentTime) f = x; else break; }
+        const W = tile.clientWidth, H = tile.clientHeight;
+        if (cv.width !== W) { cv.width = W; cv.height = H; }
+        const g = cv.getContext("2d"); g.clearRect(0, 0, W, H);
+        if (!f || !f[1]) return;
+        const vw = v.videoWidth || 16, vh = v.videoHeight || 9, s = Math.min(W / vw, H / vh), ox = (W - vw * s) / 2, oy = (H - vh * s) / 2;
+        const P = (k) => [ox + f[1][k][0] * vw * s, oy + f[1][k][1] * vh * s];
+        g.lineWidth = Math.max(2, W / 110); g.lineCap = "round"; g.strokeStyle = "rgba(241,207,138,0.95)";
+        for (const [a, b] of HAND) { g.beginPath(); g.moveTo(...P(a)); g.lineTo(...P(b)); g.stroke(); }
+        g.fillStyle = "#fff"; for (let k = 0; k < 4; k++) { const [x, y] = P(k); g.beginPath(); g.arc(x, y, Math.max(2, W / 90), 0, 7); g.fill(); }
+      };
+      const thumbT = used ? good[0].t0 : (vd.window ? vd.window[0] + 1 : 2);
+      v.addEventListener("loadedmetadata", () => { try { v.currentTime = thumbT; } catch {} }, { once: true });
+      v.addEventListener("seeked", draw);
+      let raf = 0;
+      const tick = () => { draw(); raf = requestAnimationFrame(tick); };
+      const play = el("span", "play", "▶");
+      tile.appendChild(play);
+      tile.addEventListener("click", () => {
+        if (v.paused) { v.loop = true; v.play().catch(() => {}); play.style.opacity = 0; tick(); }
+        else { v.pause(); cancelAnimationFrame(raf); play.style.opacity = 1; }
+      });
+      const seen = frames.filter((x) => x[1]).length;
+      const title = (vd.title || vd.id).replace(/\s*\(task.*\)$/, "");
+      const cap = el("figcaption", "", `<b>${esc(title)}</b>
+        <span>MediaPipe Hands: ${frames.length ? Math.round((100 * seen) / frames.length) : "–"}% tracked · ${good.length} of ${mine.length} motions passed physics · ${esc(vd.licence || "")}</span>`);
+      const spark = el("canvas", "spark");
+      card.append(tile, spark, cap);
+      grid.appendChild(card);
+      // gold line: the hand's height over the whole clip, which is the motion the robot copies
+      const hy = frames.map((x) => (x[1] ? 1 - x[1][0][1] : null)), hv = hy.filter((x) => x != null);
+      const lo = Math.min(...hv), span = Math.max(1e-3, Math.max(...hv) - lo);
+      requestAnimationFrame(() => sparkline(spark, hy.map((y) => (y == null ? null : ((y - lo) / span) * 170 + 5)), {}, 0));
+    }
+  }
+
   // ---------- technical overview: one template for every robot ----------
   const kv = (items) => `<dl class="kv">${items.map(([v, l]) => `<div><dd>${esc(v)}</dd><dt>${esc(l)}</dt></div>`).join("")}</dl>`;
   const stepList = (items) => `<ol class="steps">${items.map(([a, b, c]) => `<li><b>${esc(a)}</b><code>${c != null ? esc(c) + " s" : ""}</code><span style="grid-column:2/-1">${esc(b)}</span></li>`).join("")}</ol>`;
@@ -393,7 +456,8 @@
           [`${Math.max(0, ...mv.map((m) => m.knocked_mm || 0))} mm`, "most a neighbour was nudged"], ["local", "where it ran"]],
         steps: [["Plan", P.plan], ["Lay out", "objects and targets placed inside the arm's reach"],
           ["Rehearse", "each grasp tried in physics, with variants if it slips"], ["Check", "placement error, tilt and knocked neighbours measured"]],
-        sources: rows([{ ok: true, tag: "rules", title: P.page, meta: "Wikipedia, CC BY-SA" }, ...mv.map((m) => ({ ok: true, tag: "move", title: m.label, meta: `${m.err_mm} mm off target` }))]),
+        sources: `<p class="note">Where the rules come from. The plan itself is computed, and every move below was rehearsed in physics before it was played.</p><div class="srcgrid" id="srcgrid"></div>${rows(mv.map((m) => ({ ok: true, tag: "move", title: m.label, meta: `${m.err_mm} mm off target` })))}`,
+        onOpen: () => pageCards($("#srcgrid"), [{ url: P.page, used: true, badge: "rules", title: P.page.split("/wiki/")[1].replace(/_/g, " "), meta: `${P.plan} · Wikipedia, CC BY-SA 4.0` }]),
       };
     }
     if (box.kind === "chess") {
@@ -407,8 +471,9 @@
           [`${r.max_err_mm} mm`, "worst placement off a square's centre"], [ev("page").length, "pages read by the scraper"], [host.split(" · ")[0], "where the scraping ran"]],
         steps: [["Plan", "the agent turned the prompt into a search"], ["Scrape", `Scrapling in a throwaway sandbox (${host})`],
           ["Check", `python-chess re-read every move: ${r.plies} legal`], ["Rehearse", "every grasp simulated and checked before it is played"]],
-        sources: rows(ev("page").map((e) => ({ ok: e.move_lists > 0, tag: e.move_lists > 0 ? "used" : "read", title: e.title || e.url, meta: `${e.move_lists} move lists · Wikipedia, CC BY-SA` }))),
-        onOpen: () => syncMoves(r),
+        sources: `<p class="note">Every page the scraper read. The game came from the green one; python-chess re-checked all ${esc(r.plies)} moves before the robot played them.</p><div class="srcgrid" id="srcgrid"></div>`,
+        onOpen: () => { syncMoves(r); pageCards($("#srcgrid"), ev("page").map((e) => ({ url: e.url, used: e.move_lists > 0, badge: e.move_lists > 0 ? "game taken from here" : "read",
+          title: (e.title || e.url).replace(/ - Wikipedia$/, ""), meta: `${e.move_lists} move lists found · Wikipedia, CC BY-SA 4.0` }))); },
       };
     }
     if (box.kind === "workout") {
@@ -479,7 +544,8 @@
       steps: [["Plan", "the agent picked the task and the people to learn from", t.plan], ["Scrape", `throwaway sandboxes fetch and re-encode openly licensed video (${host})`, t.scrape],
         ["Verify", "a VLM checks every clip", t.verify], ["Retarget", "MediaPipe hand track → SO-101 path → MuJoCo physics gate", t.motion],
         ["Tune", "a small policy trained on the CPU", t.train], ["Test", "fixed layouts the policy never saw", t.evaluate]],
-      sources: rows(verdicts.map((v) => ({ ok: v.accept, tag: v.accept ? "used" : "rejected", title: v.title, meta: `${v.licence || ""} · ${v.reason || ""}` }))),
+      sources: `<p class="note">Every video the robot learned from, tracked by MediaPipe Hands. Click one to play it with the hand drawn on; the gold line under it is the hand's height over the whole clip. Green: its motion passed the physics check and became robot demonstrations.</p><div class="srcgrid" id="srcgrid"></div>`,
+      onOpen: () => handCards($("#srcgrid"), box.id, verdicts, ev("motion")),
     };
   }
 
