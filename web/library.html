@@ -92,7 +92,7 @@ footer { color: var(--text-3); font-size: 13px; padding: 30px 0 50px; border-top
   const clean = (t) => String(t || "").replace(/\.(webm|ogv|ogg|mp4)$/i, "");
   const { items } = await fetch("data.json").then((r) => r.json());
   const groups = [["All", () => true], ["Curls", (i) => /curl/i.test(i.exercise)], ["Triceps", (i) => /tricep/i.test(i.exercise)],
-    ["Raises", (i) => /raise/i.test(i.exercise)], ["Presses & rows", (i) => /press|row/i.test(i.exercise)], ["Chess", (i) => i.kind === "chess"]];
+    ["Raises", (i) => /raise/i.test(i.exercise)], ["Presses & rows", (i) => /press|row/i.test(i.exercise)], ["Blocks", (i) => /block/i.test(i.exercise)], ["Chess", (i) => i.kind === "chess"]];
   const people = items.reduce((n, i) => n + (i.sources || []).length, 0);
   const robots = items.reduce((n, i) => n + (i.robots || 1), 0);
   const kinds = new Set(items.map((i) => i.exercise)).size;
@@ -111,6 +111,7 @@ footer { color: var(--text-3); font-size: 13px; padding: 30px 0 50px; border-top
   const io = new IntersectionObserver((es) => es.forEach((e) => { const v = e.target; if (e.isIntersecting) { if (!v.src) v.src = v.dataset.src; v.play().catch(() => {}); } else v.pause(); }), { rootMargin: "200px" });
   function meta(i) {
     if (i.kind === "chess") return `<span>${i.moves} moves</span><span>${i.transfers} pick-and-places</span><span>worst ${i.error_mm} mm</span>`;
+    if (i.kind === "trained") return `<span>${i.success} unseen layouts</span><span>${i.episodes} episodes</span><span>${(i.params || 0).toLocaleString()}-param policy</span>`;
     return `<span>${i.videos ?? "–"} videos</span><span>${i.robots} robot${i.robots > 1 ? "s" : ""}</span><span>${i.reps ?? "–"} reps</span><span>±${i.error_deg ?? "–"}°</span>`;
   }
   function draw() {

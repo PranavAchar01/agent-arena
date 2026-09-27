@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
 CHESS_KEY = "91342743086ddfc4"
 CHESS_RUN = "chess-140740-0d00"
-EXTRA = ["workout-001819-8140"]
+EXTRA: list[str] = []  # earlier single runs (the 00:18 curl is covered by the fleet curl)
 
 
 def enc(src: Path, dst: Path, w: int, crf: int) -> bool:
@@ -196,6 +196,43 @@ def workout(run: Path, out: Path) -> dict | None:
     }
 
 
+TRAINED = {  # block tasks: a small policy trained on physics-checked demonstrations retargeted from real people
+    "box-place": ("put a block in the bowl", "Put the block in the bowl"),
+    "box-tower": ("build a three-block tower", "Add one more block to make a tower"),
+}
+
+
+def trained(rid: str, out: Path) -> dict | None:
+    run = RUNS / rid
+    if not (run / "showcase.mp4").is_file() or not (run / "run.json").is_file():
+        return None
+    s = json.loads((run / "run.json").read_text())
+    pol = s.get("policy") or {}
+    medium, prompt = TRAINED[rid]
+    d = out / "runs" / rid
+    enc(run / "showcase.mp4", d / "robot.mp4", 640, 30)
+    ev = [json.loads(line) for line in (run / "events.jsonl").read_text().splitlines() if line.strip()]
+    srcs = []
+    for v in (e for e in ev if e["type"] == "verdict"):
+        item = {"title": v.get("title"), "page": v.get("page"), "author": v.get("author"), "licence": v.get("licence"),
+                "copied": {"ok": bool(v.get("accept"))}}
+        if poster(run / "clips" / f"{v['id']}.mp4", 6.0, d / "people" / f"{v['id']}.jpg"):
+            item["poster"] = f"runs/{rid}/people/{v['id']}.jpg"
+        srcs.append(item)
+    with zipfile.ZipFile(d / "skill.zip", "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(run / "policy.pt", "policy.pt")
+        zf.writestr("run.json", json.dumps({k: s.get(k) for k in ("text", "plan", "dataset", "policy")}, indent=1, default=str))
+        zf.writestr("sources.json", json.dumps(srcs, indent=1))
+        zf.writestr("README.md", f"# SO-101 skill: {medium}\n\npolicy.pt: a small PyTorch policy (ChunkMLP) trained on "
+                    f"physics-checked demonstrations retargeted from real people's hand motion (MediaPipe) in the HO-Cap "
+                    f"dataset (CC BY 4.0). It reads joint angles and object positions. Solved {pol.get('eval_success')}/"
+                    f"{pol.get('eval_n')} unseen layouts in MuJoCo.\n")
+    return {"id": rid, "kind": "trained", "prompt": prompt, "exercise": medium, "video": f"runs/{rid}/robot.mp4",
+            "download": f"runs/{rid}/skill.zip", "robots": 1, "episodes": (s.get("dataset") or {}).get("episodes"),
+            "success": f"{pol.get('eval_success')}/{pol.get('eval_n')}", "params": pol.get("params"), "ok": True,
+            "sources": srcs, "finished": round((run / "run.json").stat().st_mtime)}
+
+
 def chess(out: Path) -> dict | None:
     rep = RUNS / "chess" / CHESS_KEY
     if not (rep / "game.mp4").is_file():
@@ -266,6 +303,11 @@ def main():
                 items.append(it)
                 print("added", run.name, it["exercise"], flush=True)
     items.sort(key=lambda x: -x["finished"])
+    for rid in TRAINED:
+        t = trained(rid, out)
+        if t:
+            items.insert(0, t)
+            print("added", rid, t["exercise"], flush=True)
     c = chess(out)
     if c:
         items.insert(0, c)
