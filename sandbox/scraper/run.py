@@ -158,6 +158,76 @@ def _scrapling_media(url: str, dst: str) -> str | None:
     return dst
 
 
+YT_CC = "EgIwAQ%253D%253D"  # YouTube's own search filter: Creative Commons licensed uploads only
+YT_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
+
+
+def _mmss(s: str) -> int:
+    parts = [int(x) for x in re.findall(r"\d+", s or "")]
+    n = 0
+    for x in parts:
+        n = n * 60 + x
+    return n
+
+
+def search_youtube(client, q, limit):
+    """YouTube search restricted to Creative Commons uploads, fetched with Scrapling; results parsed from the page's
+    ytInitialData JSON (titles and ids only, as data)."""
+    from scrapling.fetchers import Fetcher
+
+    url = f"https://www.youtube.com/results?search_query={quote(q)}&sp={YT_CC}"
+    r = Fetcher.get(url, headers={"User-Agent": YT_UA, "Accept-Language": "en-US,en;q=0.9"}, timeout=20,
+                    stealthy_headers=False, retries=1)
+    body = r.body or b""
+    if r.status >= 400 or len(body) > 4_000_000:
+        raise httpx.HTTPError(f"HTTP {r.status}")
+    m = re.search(rb"var ytInitialData = (\{.*?\});</script>", body, re.S)
+    data = json.loads(m.group(1)) if m else {}
+    out = []
+
+    def walk(x):
+        if isinstance(x, dict):
+            v = x.get("videoRenderer")
+            if isinstance(v, dict) and v.get("videoId"):
+                title = "".join(t.get("text", "") for t in v.get("title", {}).get("runs", []))[:140]
+                owner = (v.get("ownerText", {}).get("runs") or [{}])[0].get("text", "")[:80]
+                out.append({"source": "youtube", "title": title, "page": f"https://www.youtube.com/watch?v={v['videoId']}",
+                            "media": None, "licence": "Creative Commons (YouTube filter; checked before download)",
+                            "author": owner, "bytes": 0, "duration": _mmss(v.get("lengthText", {}).get("simpleText", "")),
+                            "description": ""})
+            for y in x.values():
+                walk(y)
+        elif isinstance(x, list):
+            for y in x:
+                walk(y)
+
+    walk(data)
+    return out[:limit]
+
+
+def fetch_youtube(c, tmp) -> str | None:
+    """Only a short window, only if YouTube itself says the upload is Creative Commons."""
+    import yt_dlp
+    from yt_dlp.utils import download_range_func
+
+    dur = int(c.get("duration") or 0)
+    start = 3 if dur <= 90 else 10
+    opts = {"quiet": True, "no_warnings": True, "noplaylist": True, "socket_timeout": 15, "cachedir": False,
+            "format": "best[height<=480][ext=mp4]/best[height<=480]/worst", "outtmpl": tmp + ".%(ext)s",
+            "download_ranges": download_range_func(None, [(start, start + MAX_SECONDS)]), "max_filesize": MAX_MEDIA_BYTES,
+            "http_headers": {"User-Agent": YT_UA}}
+    with yt_dlp.YoutubeDL(opts) as y:
+        info = y.extract_info(c["page"], download=False)
+        lic = str(info.get("license") or "")
+        if "creative commons" not in lic.lower():
+            raise Blocked(f"not Creative Commons on YouTube: {lic or 'standard licence'}")
+        c["licence"] = "CC BY (YouTube: " + lic[:60] + ")"
+        c["author"] = str(info.get("channel") or c.get("author") or "")[:80]
+        y.download([c["page"]])
+    files = [f for f in os.listdir("/tmp") if f.startswith(os.path.basename(tmp))]
+    return os.path.join("/tmp", files[0]) if files else None
+
+
 def search_commons(client, q, limit):
     api = (
         "https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6"
@@ -215,6 +285,8 @@ def search_archive(client, q, limit):
 
 def licence_ok(c) -> bool:
     lic = c.get("licence") or ""
+    if c.get("source") == "youtube":
+        return True  # searched with YouTube's Creative Commons filter; the licence is re-checked before any download
     if c.get("source") == "pexels" and lic == "Pexels License":
         return True  # https://www.pexels.com/license/: free to use and modify
     if "nc" in lic.lower().replace("licenses/by-nc", "nc"):
@@ -290,6 +362,8 @@ def stills(clip: str, cid: str, dur: float, n: int = 8):
 
 def fetch_media(client, c, deadline) -> str | None:
     tmp = f"/tmp/{hashlib.sha1(c['page'].encode()).hexdigest()[:10]}"
+    if c["source"] == "youtube":
+        return fetch_youtube(c, tmp)
     if c["source"] == "internet-archive":
         ident = c["page"].rstrip("/").split("/")[-1]
         meta = client.get(
@@ -449,10 +523,9 @@ def main():
                 )
         job = {**job, "queries": [], "include": [], "exclude": []}
     for q in job["queries"]:
-        for fn, name in (
-            (search_commons, "Wikimedia Commons"),
-            (search_archive, "Internet Archive"),
-        ):
+        all_sources = {"youtube": (search_youtube, "YouTube (Creative Commons)"), "commons": (search_commons, "Wikimedia Commons"),
+                       "archive": (search_archive, "Internet Archive")}
+        for fn, name in (all_sources[k] for k in job.get("sources", ["commons", "archive"]) if k in all_sources):
             try:
                 found = fn(client, q, job.get("per_query", 12))
             except httpx.HTTPError as e:
