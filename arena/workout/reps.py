@@ -87,16 +87,37 @@ def reps(t: np.ndarray, a: np.ndarray) -> list[dict]:
     ]
 
 
-def analyse(frames: list[dict], aspect: float) -> dict:
+HIPS = {"left": 7, "right": 8}
+
+
+def shoulder_angles(frames: list[dict], aspect: float, side: str) -> np.ndarray:
+    """Arm elevation at the shoulder: the angle between the torso (shoulder->hip) and the upper arm (shoulder->elbow).
+    0 degrees with the arm hanging, about 90 with it level, about 180 overhead."""
+    s, e, _ = ARMS[side]
+    h = HIPS[side]
+    out = np.full(len(frames), np.nan)
+    for k, f in enumerate(frames):
+        lm = f.get("lm")
+        if not lm or min(lm[s][2], lm[e][2], lm[h][2]) < MIN_VIS:
+            continue
+        p = [np.array([lm[j][0] * aspect, lm[j][1]]) for j in (h, s, e)]
+        u, v = p[0] - p[1], p[2] - p[1]
+        c = u @ v / (np.linalg.norm(u) * np.linalg.norm(v) + 1e-9)
+        out[k] = np.degrees(np.arccos(np.clip(c, -1, 1)))
+    return out
+
+
+def analyse(frames: list[dict], aspect: float, primary: str = "elbow") -> dict:
+    """Elbow angle and shoulder elevation on the better-seen arm; reps counted on the exercise's primary joint."""
     t, raw, side = elbow_angles(frames, aspect)
+    sh_raw = shoulder_angles(frames, aspect, side)
     seen = float(np.isfinite(raw).mean()) if len(raw) else 0.0
     a = smooth(raw)
-    rs = reps(t, a) if seen > 0.4 else []
-    return {
-        "side": side,
-        "tracked": round(seen, 2),
-        "t": t.round(3).tolist(),
-        "angle": [round(float(x), 1) if np.isfinite(x) else None for x in a],  # JSON has no NaN
-        "reps": rs,
-        "ok": len(rs) >= 2,
-    }
+    sh = smooth(sh_raw)
+    if primary == "shoulder":
+        rs = reps(t, 180.0 - sh) if seen > 0.4 and np.isfinite(sh).all() else []
+    else:
+        rs = reps(t, a) if seen > 0.4 else []
+    fin = lambda arr: [round(float(x), 1) if np.isfinite(x) else None for x in arr]  # noqa: E731 - JSON has no NaN
+    return {"side": side, "tracked": round(seen, 2), "t": t.round(3).tolist(), "angle": fin(a), "shoulder": fin(sh),
+            "primary": primary, "reps": rs, "ok": len(rs) >= 2}

@@ -237,13 +237,13 @@ def _cartesian(sc: CurlScene, pts, frame):
 
 def _joints(sc: CurlScene, targets: np.ndarray, grip: float, frame, log=None):
     """Joint-space playback at the control rate; returns the measured elbow and the handle-to-pads distance."""
-    el = sc.model.joint("elbow_flex").qposadr[0]
+    adr = [sc.model.joint(j).qposadr[0] for j in ("shoulder_lift", "elbow_flex")]
     measured, slip = [], []
     for k, q in enumerate(targets):
         q = sc.q + np.clip(q - sc.q, -CURL_DQ, CURL_DQ)
         sc.q = q
         sc.step(np.append(q, grip))
-        measured.append(sc.data.qpos[el])
+        measured.append(sc.data.qpos[adr].copy())
         slip.append(float(np.linalg.norm(sc.handle() - sc.pad_mid())))
         if frame and k % 2 == 0:
             frame()
@@ -251,9 +251,10 @@ def _joints(sc: CurlScene, targets: np.ndarray, grip: float, frame, log=None):
 
 
 def perform(
-    angle_deg: np.ndarray, t: np.ndarray, frame: Callable | None = None
+    angle_deg: np.ndarray, t: np.ndarray, frame: Callable | None = None, shoulder_deg: np.ndarray | None = None
 ) -> dict:
-    """Pick up, curl along the human elbow trace (1:1), put down. Returns checks and the robot joint trajectory."""
+    """Pick up, copy the human arm (elbow, and shoulder elevation when given) 1:1, put down. Returns checks and the
+    robot joint trajectory."""
     sc = CurlScene()
     for _ in range(60):
         sc.step(sc.data.ctrl.copy())
@@ -296,8 +297,9 @@ def perform(
     _cartesian(sc, pts, frame)
     picked = sc.handle()[2] > 0.06
 
-    # curl: human flexion (180 - elbow angle) drives the robot elbow 1:1 from its curl start pose
-    el = JOINTS.index("elbow_flex")
+    # the human arm drives the robot arm 1:1, joint by joint, from each joint's starting position:
+    # elbow flexion (180 - elbow angle) closes the robot elbow; shoulder elevation raises the robot upper arm
+    el, sh = JOINTS.index("elbow_flex"), JOINTS.index("shoulder_lift")
     start = sc.q.copy()
     ready = start.copy()
     ready[el] = CURL_START
@@ -305,12 +307,18 @@ def perform(
     tc = np.arange(t[0], t[-1], DT)
     flex = np.radians(np.clip(180.0 - np.interp(tc, t, angle_deg), 0, 135))
     flex -= flex.min()
+    lift = np.zeros_like(flex)
+    if shoulder_deg is not None:
+        lift = np.radians(np.clip(np.interp(tc, t, shoulder_deg), 0, 180))
+        lift = np.clip(lift - lift.min(), 0, np.radians(88))  # the SO-101 shoulder has ~90 degrees above this pose
     curl = np.repeat(ready[None], len(tc), 0)
     curl[:, el] = CURL_START - flex
+    curl[:, sh] = ready[sh] - lift
     measured, slip = _joints(sc, np.vstack([targets, curl]), GRIP_CLOSED, frame)
     m_curl = measured[len(targets) :]
     s_curl = slip[len(targets) :]
-    track_rms = float(np.degrees(np.sqrt(np.mean((m_curl - curl[:, el]) ** 2))))
+    err = np.degrees(m_curl - curl[:, [sh, el]])
+    track_rms = float(np.sqrt(np.mean(err**2)))
     held = bool(picked and s_curl.max() < 0.012)
 
     # back to the lift pose and set it down
@@ -343,7 +351,8 @@ def perform(
         "picked_up": bool(picked),
         "held_through_curl": held,
         "max_slip_mm": round(float(s_curl.max()) * 1000, 1),
-        "elbow_tracking_rms_deg": round(track_rms, 2),
+        "elbow_tracking_rms_deg": round(track_rms, 2),  # RMS over the copied joints (elbow, and shoulder if used)
+        "shoulder_range_deg": round(float(np.degrees(lift.max())), 1),
         "set_down": set_down,
         "curl_seconds": round(len(tc) * DT, 1),
         "flex_range_deg": round(float(np.degrees(flex.max())), 1),

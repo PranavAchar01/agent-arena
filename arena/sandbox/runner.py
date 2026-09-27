@@ -412,6 +412,8 @@ class VultrRunner(SandboxRunner):
             "backups": "disabled",
             "tags": ["arena-sbx"],
         }
+        if self.plan.startswith("vx1"):  # this plan family boots from attached block storage
+            body["block_devices"] = [{"bootable": True, "disk_size": 60}]
         if self.snapshot:
             body["snapshot_id"] = self.snapshot
         else:
