@@ -93,6 +93,8 @@ def main():
     for name in ("game.mp4", "poster.jpg"):
         if (RUNS / "chess" / CHESS_KEY / name).is_file():
             shutil.copy2(RUNS / "chess" / CHESS_KEY / name, chess / name)
+    for f in (ROOT / "docs" / "submission").glob("replay-*"):  # the slides and the 1-minute video, linked from the submission
+        shutil.copy2(f, out / f.name)
     (out / "data" / "runs.json").write_text(json.dumps({"runs": listing, "live": []}))
     (out / "vercel.json").write_text(
         json.dumps(
