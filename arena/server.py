@@ -105,6 +105,7 @@ def run_detail(rid: str):
         "id": rid,
         "events": _events(rid),
         "summary": json.loads(summary.read_text()) if summary.exists() else None,
+        "moves": json.loads(mv.read_text()) if (mv := RUNS / rid / "moves.json").is_file() else None,
     }
 
 
@@ -375,6 +376,7 @@ def download(rid: str):
             "manifest.json",
             "run.json",
             "game.pgn",
+            "moves.json",
         )
     }
     summary = (

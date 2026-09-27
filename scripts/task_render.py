@@ -98,6 +98,8 @@ def main():
 
     Image.fromarray(last[0]).save(out / "poster.jpg", quality=90)
     (out / "moves.json").write_text(json.dumps(log, indent=1, default=float))
+    (ROOT / "web" / "tasks").mkdir(exist_ok=True)
+    (ROOT / "web" / "tasks" / f"task-{a.task}.json").write_text((out / "moves.json").read_text())  # the local page reads it statically
     (out / "run.json").write_text(
         json.dumps(
             {

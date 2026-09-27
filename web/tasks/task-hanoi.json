@@ -1,0 +1,93 @@
+[
+ {
+  "ok": true,
+  "label": "disc 1 from A to C",
+  "err_mm": 4.8,
+  "tilt_deg": 0.0,
+  "knocked_mm": 1.4,
+  "dz_mm": 0.0,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 0.0
+ },
+ {
+  "ok": true,
+  "label": "disc 2 from A to B",
+  "err_mm": 6.3,
+  "tilt_deg": 0.0,
+  "knocked_mm": 0.2,
+  "dz_mm": 0.0,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 1.79
+ },
+ {
+  "ok": true,
+  "label": "disc 1 from C to B",
+  "err_mm": 5.2,
+  "tilt_deg": 0.1,
+  "knocked_mm": 0.6,
+  "dz_mm": 0.1,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 3.33
+ },
+ {
+  "ok": true,
+  "label": "disc 3 from A to C",
+  "err_mm": 2.2,
+  "tilt_deg": 0.0,
+  "knocked_mm": 0.0,
+  "dz_mm": 0.0,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 5.21
+ },
+ {
+  "ok": true,
+  "label": "disc 1 from B to A",
+  "err_mm": 6.9,
+  "tilt_deg": 0.0,
+  "knocked_mm": 2.0,
+  "dz_mm": 0.0,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 7.45
+ },
+ {
+  "ok": true,
+  "label": "disc 2 from B to C",
+  "err_mm": 4.0,
+  "tilt_deg": 0.1,
+  "knocked_mm": 0.1,
+  "dz_mm": 0.1,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 8.87
+ },
+ {
+  "ok": true,
+  "label": "disc 1 from A to C",
+  "err_mm": 3.4,
+  "tilt_deg": 0.1,
+  "knocked_mm": 0.1,
+  "dz_mm": 0.2,
+  "axis": "x",
+  "slow": 0.6,
+  "extra": 0.1,
+  "ik_mm": 0.2,
+  "start_s": 10.75
+ }
+]

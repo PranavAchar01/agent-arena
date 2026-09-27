@@ -1,0 +1,80 @@
+[
+ {
+  "ok": true,
+  "label": "cup 1 to row 1",
+  "err_mm": 1.4,
+  "tilt_deg": 0.0,
+  "knocked_mm": 0.0,
+  "dz_mm": 0.0,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 0.0
+ },
+ {
+  "ok": true,
+  "label": "cup 2 to row 1",
+  "err_mm": 0.7,
+  "tilt_deg": 0.0,
+  "knocked_mm": 0.0,
+  "dz_mm": 0.0,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 2.33
+ },
+ {
+  "ok": true,
+  "label": "cup 3 to row 1",
+  "err_mm": 1.0,
+  "tilt_deg": 0.0,
+  "knocked_mm": 0.0,
+  "dz_mm": 0.0,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 4.61
+ },
+ {
+  "ok": true,
+  "label": "cup 4 to row 2",
+  "err_mm": 1.2,
+  "tilt_deg": 0.0,
+  "knocked_mm": 0.0,
+  "dz_mm": 0.1,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 6.87
+ },
+ {
+  "ok": true,
+  "label": "cup 5 to row 2",
+  "err_mm": 1.6,
+  "tilt_deg": 0.1,
+  "knocked_mm": 0.0,
+  "dz_mm": 0.1,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 8.79
+ },
+ {
+  "ok": true,
+  "label": "cup 6 to row 3",
+  "err_mm": 4.2,
+  "tilt_deg": 0.2,
+  "knocked_mm": 0.0,
+  "dz_mm": 0.1,
+  "axis": "x",
+  "slow": 1.0,
+  "extra": 0.0,
+  "ik_mm": 0.2,
+  "start_s": 10.76
+ }
+]

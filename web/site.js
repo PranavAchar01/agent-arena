@@ -18,6 +18,7 @@
     robot: { phases: ["Scrape", "Verify", "Retarget", "Tune", "Test"], labels: ["Scraping", "Verifying", "Retargeting", "Tuning", "Testing"], nums: ["clips", "episodes", "success"] },
     workout: { phases: ["Scrape", "Segment", "Verify", "Copy 1:1", "Ready"], labels: ["Scraping", "Segmenting", "Verifying", "Copying 1:1", "Ready"], nums: ["videos", "reps found", "elbow error"] },
     chess: { phases: ["Search", "Scrape", "Check", "Rehearse", "Ready"], labels: ["Searching", "Scraping", "Checking", "Rehearsing", "Ready"], nums: ["moves", "pick-and-places", "worst"] },
+    puzzle: { phases: ["Plan", "Lay out", "Rehearse", "Check", "Ready"], labels: ["Planning", "Laying out", "Rehearsing", "Checking", "Ready"], nums: ["moves", "checked", "worst"] },
   };
   const PHASE_OF = {
     robot: { queued: -1, plan: 0, sandbox_start: 0, sandbox: 0, search: 0, page: 0, download: 0, clip: 0, blocked: 0, warn: 0,
@@ -341,6 +342,30 @@
     return box;
   }
 
+  // ---------- a puzzle box (Tower of Hanoi, cup pyramid): a computed plan, every move rehearsed in physics ----------
+  const PUZZLE = {
+    "task-hanoi": { prompt: "Solve the Tower of Hanoi", title: "Tower of Hanoi, three discs", agent: "hanoi agent · recursion · MuJoCo",
+      plan: "optimal solution: 2^3 - 1 = 7 moves, never a larger disc on a smaller one", page: "https://en.wikipedia.org/wiki/Tower_of_Hanoi" },
+    "task-cups": { prompt: "Stack six cups into a pyramid", title: "Six-cup pyramid", agent: "cups agent · layout · MuJoCo",
+      plan: "3-2-1 pyramid laid out from the cup size; each cup carried just high enough", page: "https://en.wikipedia.org/wiki/Cup_stacking" },
+  };
+  async function addPuzzleBox(rid) {
+    const P = PUZZLE[rid];
+    const moves = await fetch(`/tasks/${rid}.json`).then((r) => r.json());  // copied from runs/<rid>/moves.json by scripts/task_render.py
+    const box = addBox(rid, P.prompt, "puzzle");
+    box.mode = "tune";
+    box.moves = moves;
+    $(".term-title", box.root).textContent = P.agent;
+    $(".sbx", box.root).textContent = "local";
+    box.line(`agent> ${P.plan}`, "t-sys");
+    for (const m of moves) box.line(`mujoco> ${m.label || "move"} · ${m.err_mm} mm ✓`, "t-ok");
+    const worst = Math.max(0, ...moves.map((m) => m.err_mm || 0));
+    box.num(0, moves.length); box.num(1, `${moves.filter((m) => m.ok !== false).length}/${moves.length}`); box.num(2, `${worst} mm`);
+    box.ready(`${moves.length} moves, each checked in physics`);
+    box.showVideo(`/runs/${rid}/robot.mp4`);
+    return box;
+  }
+
   // ---------- technical overview: one template for every robot ----------
   const kv = (items) => `<dl class="kv">${items.map(([v, l]) => `<div><dd>${esc(v)}</dd><dt>${esc(l)}</dt></div>`).join("")}</dl>`;
   const stepList = (items) => `<ol class="steps">${items.map(([a, b, c]) => `<li><b>${esc(a)}</b><code>${c != null ? esc(c) + " s" : ""}</code><span style="grid-column:2/-1">${esc(b)}</span></li>`).join("")}</ol>`;
@@ -350,6 +375,20 @@
     const ev = (t) => box.events.filter((e) => e.type === t);
     const vmEv = ev("vm_create")[0];
     const host = vmEv ? `Vultr VM ${vmEv.instance.slice(0, 8)} · ${vmEv.plan}` : "local Docker sandbox";
+    if (box.kind === "puzzle") {
+      const P = PUZZLE[box.id];
+      const mv = box.moves || [];
+      return {
+        title: P.title,
+        media: `<video class="hero-video" src="/runs/${esc(box.id)}/robot.mp4" autoplay muted loop playsinline controls></video>`,
+        note: "MuJoCo physics (Google DeepMind), official SO-101 model and servo gains. Every move is rehearsed first and only played if it lands.",
+        glance: [[mv.length, "moves"], [`${Math.max(0, ...mv.map((m) => m.err_mm || 0))} mm`, "worst placement error"],
+          [`${Math.max(0, ...mv.map((m) => m.knocked_mm || 0))} mm`, "most a neighbour was nudged"], ["local", "where it ran"]],
+        steps: [["Plan", P.plan], ["Lay out", "objects and targets placed inside the arm's reach"],
+          ["Rehearse", "each grasp tried in physics, with variants if it slips"], ["Check", "placement error, tilt and knocked neighbours measured"]],
+        sources: rows([{ ok: true, tag: "rules", title: P.page, meta: "Wikipedia, CC BY-SA" }, ...mv.map((m) => ({ ok: true, tag: "move", title: m.label, meta: `${m.err_mm} mm off target` }))]),
+      };
+    }
     if (box.kind === "chess") {
       const r = box.replay || {};
       return {
@@ -553,13 +592,14 @@
     // finished robots from earlier runs; a new prompt appears above them. ?preload=run,chess:run to choose
     (async () => {
       let list = qs.get("preload")?.split(",");
-      if (!list) {  // the newest finished workout run (else the block-and-bowl run), then the chess run
+      if (!list) {  // the six skills in the public library, one per medium; the newest ends up on top
         const runs = await fetch("/api/runs").then((r) => r.json()).catch(() => ({ runs: [] }));
-        const w = runs.runs.filter((r) => r.id.startsWith("workout-")).sort((a, b) => a.finished - b.finished).map((r) => r.id).pop();
-        list = ["chess:chess-140740-0d00", w || "box-place"];
+        const w = runs.runs.some((r) => r.id === "workout-030427-b43c") ? "workout-030427-b43c" : null;  // the curl in the public library
+        list = [w || "workout-030427-b43c", "box-place", "box-tower", "task-cups", "task-hanoi", "chess:chess-140740-0d00"];
       }
       for (const item of list) {
         if (item.startsWith("chess:")) await addChessBox(item.slice(6)).catch(() => {});
+        else if (PUZZLE[item]) await addPuzzleBox(item).catch(() => {});
         else await replay(item, null, Infinity, 0).catch(() => {});
       }
     })();
