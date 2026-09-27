@@ -208,13 +208,12 @@ def search_youtube(client, q, limit):
 def fetch_youtube(c, tmp) -> str | None:
     """Only a short window, only if YouTube itself says the upload is Creative Commons."""
     import yt_dlp
-    from yt_dlp.utils import download_range_func
 
     dur = int(c.get("duration") or 0)
     start = 3 if dur <= 90 else 10
     opts = {"quiet": True, "no_warnings": True, "noplaylist": True, "socket_timeout": 15, "cachedir": False,
-            "format": "best[height<=480][ext=mp4]/best[height<=480]/worst", "outtmpl": tmp + ".%(ext)s",
-            "download_ranges": download_range_func(None, [(start, start + MAX_SECONDS)]), "max_filesize": MAX_MEDIA_BYTES,
+            "format": "bv*[height<=480][ext=mp4]/bv*[height<=480]/b[height<=480]/bv*/b", "outtmpl": tmp + ".%(ext)s",
+            "max_filesize": MAX_MEDIA_BYTES,
             "http_headers": {"User-Agent": YT_UA}}
     with yt_dlp.YoutubeDL(opts) as y:
         info = y.extract_info(c["page"], download=False)
@@ -224,8 +223,14 @@ def fetch_youtube(c, tmp) -> str | None:
         c["licence"] = "CC BY (YouTube: " + lic[:60] + ")"
         c["author"] = str(info.get("channel") or c.get("author") or "")[:80]
         y.download([c["page"]])
-    files = [f for f in os.listdir("/tmp") if f.startswith(os.path.basename(tmp))]
-    return os.path.join("/tmp", files[0]) if files else None
+    files = [f for f in os.listdir("/tmp") if f.startswith(os.path.basename(tmp)) and not f.endswith(".part")]
+    if not files:
+        return None
+    src, cut = os.path.join("/tmp", files[0]), tmp + "_cut.mp4"
+    # keep only the window after the intro; reencode() then makes the clean small copy
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(start), "-t", str(MAX_SECONDS), "-i", src, "-an", "-c", "copy", cut],
+                   capture_output=True, timeout=60)
+    return cut if os.path.exists(cut) and os.path.getsize(cut) > 0 else src
 
 
 def search_commons(client, q, limit):
