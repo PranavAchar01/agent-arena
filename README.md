@@ -176,16 +176,6 @@ Caveats, stated plainly:
   directly to SmolVLA, whose action head uses flow matching rather than tokens.
 - Steps 2 and 3 need a GPU. Nothing in this section has been run yet.
 
-## Honest limits
-
-- **Simulation only so far.** Everything runs on the official SO-101 model in MuJoCo with the real servo gains. The
-  hardware test on a real arm is next.
-- **Not a VLA.** The trained policies read joint angles and object positions, not camera pixels. A pretrained
-  ResNet-18 reading camera frames scored 11/50 against the small policy's 40/50 on a CPU, so the small one shipped.
-- **Chess, Hanoi and cups are planned, not learned.** Their rules come from the web or are computed; the arm's motion
-  is rehearsed in physics.
-- **Next:** the deployment path above. It is planned, not yet run.
-
 ## Credits
 
 - [MuJoCo](https://mujoco.org) (Google DeepMind) for physics; the SO-101 model in `vendor/so101` (Apache 2.0).
