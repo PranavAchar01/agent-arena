@@ -98,6 +98,8 @@ footer { color: var(--text-3); font-size: 13px; padding: 30px 0 50px; border-top
   const kinds = new Set(items.map((i) => i.exercise)).size;
   $("#stats").innerHTML = [[items.length, "robot skills"], [people, "openly licensed videos learned from"], [robots, "simulated robots run"], [kinds, "different movements"]]
     .map(([b, s]) => `<div><b>${b}</b><span>${s}</span></div>`).join("");
+  const shown = groups.filter(([, f], k) => k === 0 || items.some(f));  // no empty filters
+  groups.length = 0; groups.push(...shown);
   let filter = groups[0];
   $("#filters").innerHTML = groups.map(([g], k) => `<button data-k="${k}" class="${k ? "" : "on"}">${g}</button>`).join("");
   $("#filters").addEventListener("click", (e) => {
