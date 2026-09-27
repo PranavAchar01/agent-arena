@@ -392,9 +392,10 @@
             tile.frames = (box.pose || {})[c.id] || [];
             tile.v.preload = "auto";
             // thumbnail: the frame where MediaPipe sees the person most clearly (never an intro card or logo)
-            const seen = tile.frames.filter((f) => f.lm).map((f) => [f.t, f.lm.slice(1, 7).reduce((n, j) => n + j[2], 0)]);
+            const inWin = (f) => !(used && ch.window) || (f.t >= ch.window[0] && f.t <= ch.window[1]);
+            const seen = tile.frames.filter((f) => f.lm && inWin(f)).map((f) => [f.t, f.lm.slice(1, 7).reduce((n, j) => n + j[2], 0)]);
             const clear = seen.length ? seen.reduce((a, b) => (b[1] > a[1] ? b : a))[0] : null;
-            const thumbT = used && ch.window ? (ch.window[0] + ch.window[1]) / 2 : clear ?? Math.min(3, (c.seconds || 6) / 3);
+            const thumbT = clear ?? (used && ch.window ? (ch.window[0] + ch.window[1]) / 2 : Math.min(3, (c.seconds || 6) / 3));
             tile.v.addEventListener("loadedmetadata", () => { try { tile.v.currentTime = thumbT; } catch {} }, { once: true });
             const drawAt = () => { let best = null; for (const f of tile.frames) { if (f.t <= tile.v.currentTime) best = f; else break; } tile.draw(best && best.lm); };
             tile.v.addEventListener("seeked", drawAt);
