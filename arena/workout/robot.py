@@ -47,6 +47,8 @@ def build() -> mujoco.MjModel:
     pads = _pad_frames()
     spec = _base_spec()
     w = spec.worldbody
+    spec.add_texture(name="sky", type=mujoco.mjtTexture.mjTEXTURE_SKYBOX, builtin=mujoco.mjtBuiltin.mjBUILTIN_GRADIENT,
+                     rgb1=[0.22, 0.24, 0.28], rgb2=[0.03, 0.03, 0.04], width=512, height=512)
     spec.add_material(name="desk", rgba=[0.16, 0.15, 0.15, 1], reflectance=0.12)
     spec.add_material(name="floor", rgba=[0.1, 0.1, 0.12, 1])
     spec.add_material(
@@ -155,14 +157,10 @@ def build() -> mujoco.MjModel:
             contype=0,
             conaffinity=0,
         )
-    cam = [0.42, -0.30, 0.26]
-    w.add_camera(
-        name="judge", pos=cam, xyaxes=_look_at(cam, [0.14, 0.0, 0.10]), fovy=45
-    )
-    side = [0.16, -0.55, 0.16]
-    w.add_camera(
-        name="side", pos=side, xyaxes=_look_at(side, [0.14, 0.0, 0.12]), fovy=42
-    )
+    # front three-quarter view, close: the dumbbell lies across the frame, so both plates read clearly
+    cam = [0.50, -0.36, 0.24]
+    w.add_camera(name="judge", pos=cam, xyaxes=_look_at(cam, [0.10, 0.0, 0.18]), fovy=55)
+    w.add_camera(name="side", pos=cam, xyaxes=_look_at(cam, [0.10, 0.0, 0.18]), fovy=55)
     return spec.compile()
 
 

@@ -207,23 +207,13 @@
       if (e.type === "done" && e.timings_s) this.finish();
     }
     workout(e) {
-      const screen = $(".screen", this.root);
-      if (e.type === "clips") {
-        this.clipList = e.clips;
-        this.num(0, e.clips.length);
-        const grid = $(".tiles", this.root);
-        grid.innerHTML = "";
-        for (const c of e.clips) { const t = new Tile(this.id, c); this.tiles[c.id] = t; grid.appendChild(t.root); }
-        screen.classList.add("is-tiles");
-        $(".term-title", this.root).textContent = "MediaPipe Pose · segmenting every video";
+      if (e.type === "clips") { this.clipList = e.clips; this.num(0, e.clips.length); }
+      if (e.type === "pose_done") {
+        (this.results ||= {})[e.id] = e;
+        this.num(1, Object.values(this.results).reduce((n, r) => n + r.reps, 0));
       }
-      if (e.type === "pose" && this.tiles[e.id]) this.tiles[e.id].update(e);
-      if (e.type === "pose_done" && this.tiles[e.id]) {
-        this.tiles[e.id].finish(e);
-        this.tiles[e.id].result = e;
-        this.num(1, Object.values(this.tiles).reduce((s, t) => s + (t.result ? t.result.reps : 0), 0));
-      }
-      if (e.type === "chosen" && this.tiles[e.id]) { this.tiles[e.id].root.classList.add("chosen"); this.chosen = e; }
+      if (e.type === "verdict") (this.verdicts ||= {})[e.id] = e;
+      if (e.type === "chosen") this.chosen = e;
       if (e.type === "robot") { this.robot = e; this.num(2, `${e.elbow_tracking_rms_deg}°`); }
     }
     ended() { this.root.classList.add("is-ended"); }
@@ -314,7 +304,7 @@
     download: (e) => [`↓ ${short(e.title, 52)} [${short(e.licence, 20)}]`, ""],
     clip: (e) => [`✓ ${short(e.title, 44)} · ${e.seconds}s → h264 360p`, "t-ok"],
     clips: (e) => [`mediapipe> segmenting ${e.clips.length} videos`, "t-sys"],
-    pose_done: (e, b) => [`mediapipe> ${short((b.tiles[e.id] || {}).clip?.title || e.id, 36)}: ${e.reps} reps, ${Math.round(e.tracked * 100)}% tracked`, e.ok ? "t-ok" : "t-dim"],
+    pose_done: (e, b) => [`mediapipe> ${short(((b.clipList || []).find((c) => c.id === e.id) || {}).title || e.id, 36)}: ${e.reps} reps, ${Math.round(e.tracked * 100)}% tracked`, e.ok ? "t-ok" : "t-dim"],
     verdict: (e) => [`vlm> ${e.accept ? "✓" : "✗"} ${short(e.reason, 64)}`, e.accept ? "t-ok" : "t-no"],
     chosen: (e) => [`agent> copying ${e.reps} reps from ${short(e.title, 40)}`, "t-sys"],
     robot_start: (e) => [`mujoco> ${e.message}`, "t-info"],
@@ -377,27 +367,24 @@
     if (box.kind === "workout") {
       const rob = box.robot || {};
       const ch = box.chosen;
-      const results = Object.values(box.tiles).filter((t) => t.result);
+      const res = box.results || {};
+      const clipsList = box.clipList || [];
       return {
         title: "Dumbbell biceps curl, copied 1:1",
-        media: ch ? `<div class="twoup"><figure><div id="human-slot"></div><figcaption>Human · MediaPipe Pose · ${esc(short(box.tiles[ch.id].clip.title, 40))}</figcaption></figure>
-          <figure><video class="hero-video" src="/runs/${esc(box.id)}/robot.mp4" autoplay muted loop playsinline controls></video><figcaption>SO-101 · same elbow angle, 1:1 · MuJoCo physics</figcaption></figure></div>` : "<p class='note'>Still running.</p>",
-        note: "The person's elbow angle drives the robot's elbow joint degree for degree; shoulder and wrist hold still, as in a strict curl. The arm picks the dumbbell up, curls it, and sets it back down.",
-        glance: [[Object.keys(box.tiles).length, "openly licensed videos scraped"], [results.reduce((s2, t) => s2 + t.result.reps, 0), "reps found by MediaPipe"],
+        media: rob.ok !== undefined ? `<video class="hero-video" src="/runs/${esc(box.id)}/robot.mp4" autoplay muted loop playsinline controls></video>` : "<p class='note'>Still running.</p>",
+        note: "The SO-101 picks up a dumbbell and copies a person's curl: their elbow angle drives its elbow joint degree for degree. MuJoCo physics (Google DeepMind), official SO-101 model.",
+        glance: [[clipsList.length, "openly licensed videos scraped"], [Object.values(res).reduce((n, r) => n + r.reps, 0), "reps found in them"],
           [ch ? ch.reps : "–", "reps copied by the robot"], [rob.elbow_tracking_rms_deg != null ? `${rob.elbow_tracking_rms_deg}°` : "–", "robot elbow vs human (RMS)"],
           [rob.max_slip_mm != null ? `${rob.max_slip_mm} mm` : "–", "dumbbell slip in the grip"], [host.split(" · ")[0], "where the scraping ran"]],
         steps: [["Plan", "the agent chose an exercise the arm can copy 1:1"], ["Scrape", `Scrapling in a throwaway sandbox (${host})`],
           ["Segment", "MediaPipe Pose on every video: joints, elbow angle, reps"], ["Verify", "a VLM confirmed the best clip is a real curl"],
           ["Copy", "the SO-101 picks up the dumbbell and follows the elbow 1:1"]],
-        sources: `<div class="tiles sheet-tiles" id="sheet-tiles"></div>`,
-        onOpen: () => {
-          const grid = $("#sheet-tiles");
-          for (const t of Object.values(box.tiles)) {
-            const nt = new Tile(box.id, t.clip); nt.frames = t.frames; grid.appendChild(nt.root);
-            if (t.result) { nt.finish(t.result); if (ch && ch.id === t.clip.id) nt.root.classList.add("chosen"); }
-          }
-          if (ch) { const ht = new Tile(box.id, box.tiles[ch.id].clip, true); ht.frames = box.tiles[ch.id].frames; $("#human-slot").appendChild(ht.root); ht.done = true; ht.loop(ch.window); }
-        },
+        sources: rows(clipsList.map((c) => {
+          const r = res[c.id] || {};
+          const used = ch && ch.id === c.id;
+          return { ok: used || r.ok, tag: used ? "copied" : r.ok ? "reps" : "rejected", title: c.title.replace(/\.(webm|ogv|ogg|mp4)$/i, ""),
+            meta: `MediaPipe Pose: ${r.reps ?? "–"} reps, ${r.tracked != null ? Math.round(r.tracked * 100) : "–"}% tracked · ${c.licence}` };
+        })),
       };
     }
     const s = summary || {};
