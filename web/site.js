@@ -52,8 +52,15 @@
     const text = inp.value.trim() || input.placeholder;
     const kind = modeOf(text);
     const body = kind === "robot" ? { text: `I want to train a robot to ${text}`, family, robot } : { text, mode: kind, robot };
-    const r = await fetch("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    if (!r.ok) return;
+    const r = await fetch("/api/runs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
+    if (!r || !r.ok) {  // the hosted page has no pipeline behind it: replay a recorded run of the same kind, and say so
+      inp.value = ""; family = null; mode = null;
+      $("#fleet").scrollIntoView({ behavior: "smooth", block: "start" });
+      const note = "hosted demo: replaying a recorded run (live runs need the local server)";
+      if (kind === "chess") { const b = await addChessBox("chess-140740-0d00"); b.line(note, "t-dim"); }
+      else replay(kind === "workout" ? "workout-030427-b43c" : "box-place", text, 25, 600, note);
+      return;
+    }
     const { id } = await r.json();
     const box = addBox(id, text, kind);
     inp.value = ""; family = null; mode = null;
@@ -531,11 +538,12 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
 
   // ---------- replay and demo ----------
-  async function replay(id, task, speed, maxGap) {
+  async function replay(id, task, speed, maxGap, note) {
     const d = await fetch(`/api/runs/${id}`).then((r) => r.json());
     const kind = id.startsWith("workout-") ? "workout" : "robot";
     const text = task || (d.summary?.text || d.events[0]?.text || "").replace(/^I want to train a robot to /, "");
     const box = addBox(id, text, kind);
+    if (note) box.line(note, "t-dim");
     if (!isFinite(speed)) { for (const e of d.events) box.handle(e); return box; }
     let prev = null;
     for (const e of d.events) {
