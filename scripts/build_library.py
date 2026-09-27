@@ -233,6 +233,35 @@ def trained(rid: str, out: Path) -> dict | None:
             "sources": srcs, "finished": round((run / "run.json").stat().st_mtime)}
 
 
+PUZZLES = {  # new mediums: the plan is computed, every move rehearsed and checked in physics (arena/tasks)
+    "hanoi": ("Tower of Hanoi", "Solve the Tower of Hanoi", "Tower of Hanoi", "https://en.wikipedia.org/wiki/Tower_of_Hanoi",
+              "the optimal 7-move solution (2^n - 1), found by recursion; the larger disc is never put on a smaller one"),
+    "cups": ("cup-stacking pyramid", "Stack six cups into a pyramid", "Cup stacking", "https://en.wikipedia.org/wiki/Cup_stacking",
+             "a 3-2-1 pyramid laid out from the cup size; each cup is carried just high enough to clear what is standing"),
+}
+
+
+def puzzle(name: str, out: Path) -> dict | None:
+    run = RUNS / f"task-{name}"
+    if not (run / "robot.mp4").is_file():
+        return None
+    medium, prompt, title, page, how = PUZZLES[name]
+    rid = f"task-{name}"
+    d = out / "runs" / rid
+    enc(run / "robot.mp4", d / "robot.mp4", 640, 28)
+    moves = json.loads((run / "moves.json").read_text())
+    with zipfile.ZipFile(d / "skill.zip", "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(run / "moves.json", "moves.json")
+        zf.write(run / "run.json", "run.json")
+        zf.writestr("README.md", f"# SO-101 skill: {medium}\n\nmoves.json: every move with its physics check "
+                    f"(placement error, knocked neighbours, rehearsal variant). The plan is {how}.\n")
+    return {"id": rid, "kind": "puzzle", "prompt": prompt, "exercise": medium, "video": f"runs/{rid}/robot.mp4",
+            "download": f"runs/{rid}/skill.zip", "robots": 1, "moves": len(moves),
+            "error_mm": max(m.get("err_mm") or 0 for m in moves), "ok": True,
+            "sources": [{"title": title, "page": page, "author": "Wikipedia contributors", "licence": "CC BY-SA 4.0"}],
+            "finished": round((run / "run.json").stat().st_mtime)}
+
+
 def chess(out: Path) -> dict | None:
     rep = RUNS / "chess" / CHESS_KEY
     if not (rep / "game.mp4").is_file():
@@ -308,6 +337,11 @@ def main():
         if t:
             items.insert(0, t)
             print("added", rid, t["exercise"], flush=True)
+    for name in PUZZLES:
+        t = puzzle(name, out)
+        if t:
+            items.insert(0, t)
+            print("added", name, flush=True)
     c = chess(out)
     if c:
         items.insert(0, c)
