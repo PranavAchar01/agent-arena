@@ -31,7 +31,9 @@ from . import robot
 
 HERE = Path(__file__).resolve().parent
 UA = "ReplayArena/0.1 (hackathon prototype; openly licensed video only)"
-QUERIES = ["dumbbell bicep curl", "how to do bicep curls", "standing dumbbell curl", "bicep curl form", "ez bar curl"]
+QUERIES = ["dumbbell bicep curl", "how to do bicep curls", "standing dumbbell curl", "bicep curl form",
+           "ez bar curl", "alternating dumbbell curl", "bicep curl tutorial", "barbell curl"]
+MAX_SECONDS = 240  # as in Player Two: longer uploads are mostly talking
 MAX_CLIPS = 8
 EXERCISE = "dumbbell biceps curl"
 
@@ -261,7 +263,7 @@ def run(text: str, run_dir: Path, emit) -> dict:
         "time_budget_s": 120,
     }
     get_runner().run(search, run_dir / "search", fwd)
-    cands = [e for e in events if e["type"] == "candidate"]
+    cands = [e for e in events if e["type"] == "candidate" and (e.get("source") != "youtube" or 0 < (e.get("duration") or 0) <= MAX_SECONDS)]
     chosen = [cands[i] for i in pick(cands)]
     emit(
         {
