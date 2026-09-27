@@ -154,9 +154,19 @@ EXERCISES = {
 EXERCISE = EXERCISES["biceps_curl"]["name"]  # kept for older imports
 
 
+_rr = [0]
+
+
 def _heavy() -> list[str] | None:
+    """HEAVY_SSH: one ssh command prefix (JSON list), or several (JSON list of lists): work is spread round robin."""
     raw = os.environ.get("HEAVY_SSH")
-    return json.loads(raw) if raw else None
+    if not raw:
+        return None
+    hosts = json.loads(raw)
+    if hosts and isinstance(hosts[0], list):
+        _rr[0] += 1
+        return hosts[_rr[0] % len(hosts)]
+    return hosts
 
 
 def plan(text: str) -> dict:
@@ -215,7 +225,7 @@ def pick(cands: list[dict], exercise: str) -> list[int]:
             for i, c in enumerate(cands)
             if any(w in c["title"].lower() for w in words)
         ]
-    return list(dict.fromkeys(got))[:8]
+    return list(dict.fromkeys(got))[: int(os.environ.get("FLEET_CLIPS", "8"))]
 
 
 def segment(clip: Path, cid: str, emit, remote_dir: str | None = None) -> list[dict]:
@@ -239,7 +249,7 @@ def segment(clip: Path, cid: str, emit, remote_dir: str | None = None) -> list[d
             f"cd /opt/replay && /opt/venv/bin/python arena/workout/pose_body.py {shlex.quote(remote)}",
         ]
     else:
-        cmd = [POSE_PYTHON, str(HERE / "pose_body.py"), str(clip)]
+        cmd = [POSE_PYTHON, str(HERE / "pose_body.py"), str(clip), os.environ.get("POSE_STRIDE", "1")]
     p = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
     )
@@ -250,7 +260,7 @@ def segment(clip: Path, cid: str, emit, remote_dir: str | None = None) -> list[d
         except json.JSONDecodeError:
             continue
         frames.append(f)
-        if f["i"] % 3 == 0:
+        if f["i"] % (3 * int(os.environ.get("POSE_STRIDE", "1"))) == 0:
             emit(
                 {
                     "type": "pose",

@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "runs"
 CHESS_KEY = "91342743086ddfc4"
 CHESS_RUN = "chess-140740-0d00"
+EXTRA = ["workout-001819-8140"]
 
 
 def enc(src: Path, dst: Path, w: int, crf: int) -> bool:
@@ -107,6 +108,28 @@ def workout(run: Path, out: Path) -> dict | None:
         if (run / "sources.json").is_file()
         else []
     )
+    if not all(
+        x.get("id") for x in sources
+    ):  # older runs: rebuild the source list from the run's own event log
+        ev = [
+            json.loads(line)
+            for line in (run / "events.jsonl").read_text().splitlines()
+            if line.strip()
+        ]
+        clips = next((e["clips"] for e in ev if e["type"] == "clips"), [])
+        meta = {e["id"]: e for e in ev if e["type"] == "clip"}
+        reps = {e["id"]: e.get("reps") for e in ev if e["type"] == "pose_done"}
+        sources = [
+            {
+                "id": c["id"],
+                "title": c["title"],
+                "licence": c["licence"],
+                "reps": reps.get(c["id"]),
+                "page": meta.get(c["id"], {}).get("page"),
+                "author": meta.get(c["id"], {}).get("author"),
+            }
+            for c in clips
+        ]
     pose = (
         json.loads((run / "human_pose.json").read_text())
         if (run / "human_pose.json").is_file()
@@ -135,6 +158,8 @@ def workout(run: Path, out: Path) -> dict | None:
                 for k in ("reps", "elbow_tracking_rms_deg", "max_slip_mm", "ok")
             }
             item["best"] = cid == s.get("best")
+            if not item.get("robot") and item["best"]:
+                item["robot"] = f"runs/{rid}/robot.mp4"  # runs from before one-robot-per-person: the main robot
         if poster(
             run / "clips" / f"{cid}.mp4",
             clearest(pose.get(cid, {}), (pr or {}).get("window")),
@@ -222,8 +247,17 @@ def main():
         shutil.rmtree(out / "runs")
     out.mkdir(exist_ok=True)
     items = []
+    lib = RUNS / "library.json"
+    keep = (
+        {x["id"] for x in json.loads(lib.read_text()) if x["status"] == "ok"}
+        if lib.exists()
+        else set()
+    )
+    keep |= set(
+        EXTRA
+    )  # YouTube-era runs from before the fleet; the older Commons runs are left out
     for run in sorted(RUNS.glob("workout-*")):
-        if (run / "run.json").is_file():
+        if run.name in keep and (run / "run.json").is_file():
             try:
                 it = workout(run, out)
             except (json.JSONDecodeError, KeyError):
