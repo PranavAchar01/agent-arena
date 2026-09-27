@@ -321,7 +321,16 @@ class VultrRunner(SandboxRunner):
         check_killed()
         self._emit = on_event
         if self.docker is None:
-            self._provision()
+            try:
+                self._provision()
+            except RuntimeError as ex:
+                if "401" not in str(ex):
+                    raise
+                # the API key only accepts allow-listed networks: keep the demo running on the local sandbox
+                on_event({"type": "warn", "message": "Vultr refused this network (IP not on the API key's allow-list); "
+                          "using the local Docker sandbox instead"})
+                self.close()
+                self.docker = DockerRunner()
         elif self.warm and not self._claimed:
             self._claimed = True
             on_event(
