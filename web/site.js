@@ -208,6 +208,7 @@
     }
     workout(e) {
       if (e.type === "clips") { this.clipList = e.clips; this.num(0, e.clips.length); }
+      if (e.type === "pose") ((this.pose ||= {})[e.id] ||= []).push({ t: e.t, lm: e.lm });
       if (e.type === "pose_done") {
         (this.results ||= {})[e.id] = e;
         this.num(1, Object.values(this.results).reduce((n, r) => n + r.reps, 0));
@@ -379,12 +380,39 @@
         steps: [["Plan", "the agent chose an exercise the arm can copy 1:1"], ["Scrape", `Scrapling in a throwaway sandbox (${host})`],
           ["Segment", "MediaPipe Pose on every video: joints, elbow angle, reps"], ["Verify", "a VLM confirmed the best clip is a real curl"],
           ["Copy", "the SO-101 picks up the dumbbell and follows the elbow 1:1"]],
-        sources: rows(clipsList.map((c) => {
-          const r = res[c.id] || {};
-          const used = ch && ch.id === c.id;
-          return { ok: used || r.ok, tag: used ? "copied" : r.ok ? "reps" : "rejected", title: c.title.replace(/\.(webm|ogv|ogg|mp4)$/i, ""),
-            meta: `MediaPipe Pose: ${r.reps ?? "–"} reps, ${r.tracked != null ? Math.round(r.tracked * 100) : "–"}% tracked · ${c.licence}` };
-        })),
+        sources: `<p class="note">Every scraped video, segmented by MediaPipe Pose. Click one to play it with the skeleton; the gold line under it is that person's elbow angle over the whole video, which is what the robot copies.</p><div class="srcgrid" id="srcgrid"></div>`,
+        onOpen: () => {
+          const grid = $("#srcgrid");
+          const order = [...clipsList].sort((a, b) => (ch && b.id === ch.id) - (ch && a.id === ch.id) || ((res[b.id] || {}).reps || 0) - ((res[a.id] || {}).reps || 0));
+          for (const c of order) {
+            const r = res[c.id] || {};
+            const used = ch && ch.id === c.id;
+            const card = el("figure", `srccard${used ? " used" : ""}`);
+            const tile = new Tile(box.id, c);
+            tile.frames = (box.pose || {})[c.id] || [];
+            tile.v.preload = "auto";
+            const thumbT = used && ch.window ? (ch.window[0] + ch.window[1]) / 2 : Math.min(3, (c.seconds || 6) / 3);
+            tile.v.addEventListener("loadedmetadata", () => { try { tile.v.currentTime = thumbT; } catch {} }, { once: true });
+            const drawAt = () => { let best = null; for (const f of tile.frames) { if (f.t <= tile.v.currentTime) best = f; else break; } tile.draw(best && best.lm); };
+            tile.v.addEventListener("seeked", drawAt);
+            $(".tile-badge", tile.root).textContent = used ? "copied by the robot" : r.reps ? `${r.reps} reps` : "no reps";
+            tile.root.classList.add(used || r.ok ? "ok" : "no");
+            const play = el("span", "play", "▶");
+            tile.root.appendChild(play);
+            let playing = false;
+            tile.root.addEventListener("click", () => {
+              playing = !playing;
+              play.style.opacity = playing ? 0 : 1;
+              if (playing) { tile.loop(used ? ch.window : null); } else { tile.v.pause(); }
+            });
+            const cap = el("figcaption", "", `<b>${esc(c.title.replace(/\.(webm|ogv|ogg|mp4)$/i, ""))}</b>
+              <span>MediaPipe Pose: ${r.reps ?? "–"} reps · ${r.tracked != null ? Math.round(r.tracked * 100) : "–"}% tracked · ${esc(c.licence)}</span>`);
+            const spark = el("canvas", "spark");
+            card.append(tile.root, spark, cap);
+            grid.appendChild(card);
+            requestAnimationFrame(() => sparkline(spark, r.angle || [], (box.events.find((x) => x.type === "pose_done" && x.id === c.id) || {}), c.seconds));
+          }
+        },
       };
     }
     const s = summary || {};
@@ -403,6 +431,17 @@
         ["Tune", "a small policy trained on the CPU", t.train], ["Test", "fixed layouts the policy never saw", t.evaluate]],
       sources: rows(verdicts.map((v) => ({ ok: v.accept, tag: v.accept ? "used" : "rejected", title: v.title, meta: `${v.licence || ""} · ${v.reason || ""}` }))),
     };
+  }
+
+  function sparkline(cv, angle, done, seconds) {
+    const W = (cv.width = cv.clientWidth * 2), H = (cv.height = 56);
+    const g = cv.getContext("2d");
+    const vals = angle.filter((x) => x != null);
+    if (vals.length < 2) return;
+    const lo = 0, hi = 180;
+    g.strokeStyle = "rgba(241,207,138,0.95)"; g.lineWidth = 2.5; g.beginPath();
+    angle.forEach((a, i) => { if (a == null) return; const x = (i / (angle.length - 1)) * W, y = H - ((a - lo) / (hi - lo)) * (H - 6) - 3; i ? g.lineTo(x, y) : g.moveTo(x, y); });
+    g.stroke();
   }
 
   function syncMoves(r) {

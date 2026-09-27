@@ -309,3 +309,17 @@ body.is-locked { overflow: hidden; }
 .dl.big[hidden] { display: none; }
 .sheet-head { align-items: center; }
 @media (max-width: 720px) { .twoup { grid-template-columns: 1fr; } .screen .tiles { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---------- Sources: playable scraped videos with MediaPipe's skeleton ---------- */
+.srcgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 10px; }
+.srccard { margin: 0; background: var(--ink-1); border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--hair); }
+.srccard.used { box-shadow: inset 0 0 0 2px var(--ok); }
+.srccard .tile { aspect-ratio: 16 / 10; border-radius: 0; cursor: pointer; }
+.srccard .tile-bar, .srccard .tile-cap { display: none; }
+.srccard .tile.no { opacity: 0.7; }
+.srccard .play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 14px; color: var(--ink-0); background: rgba(241, 207, 138, 0.92); transition: opacity 0.2s; pointer-events: none; }
+.srccard .spark { display: block; width: 100%; height: 28px; background: var(--term); }
+.srccard figcaption { padding: 8px 10px 10px; display: grid; gap: 3px; }
+.srccard figcaption b { font: 500 12px/1.3 var(--sans); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srccard figcaption span { font: 500 10.5px/1.3 var(--mono); color: var(--text-3); }
