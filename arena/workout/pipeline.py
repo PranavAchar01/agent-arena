@@ -304,9 +304,20 @@ def film(
     """One robot copying one person: in-process, or on the big VM."""
     ssh = _heavy()
     if not ssh:
-        from .film_job import film as film_local
+        # its own process: MuJoCo's renderer is not safe to share between threads (parallel robots deadlocked)
+        import sys
+        import tempfile
 
-        return film_local(elbow, t, out, shoulder)
+        with tempfile.TemporaryDirectory() as tmp:
+            job = Path(tmp) / "job.json"
+            res_f = Path(tmp) / "res.json"
+            job.write_text(json.dumps({"t": t.tolist(), "elbow": elbow.tolist(),
+                                       "shoulder": None if shoulder is None else shoulder.tolist()}))
+            r = subprocess.run([sys.executable, str(HERE / "film_job.py"), str(job), str(out), str(res_f)],
+                               capture_output=True, timeout=900)
+            if r.returncode or not res_f.exists():
+                raise RuntimeError(f"robot failed: {r.stderr.decode(errors='replace')[-200:]}")
+            return json.loads(res_f.read_text())
     job = {
         "t": t.tolist(),
         "elbow": elbow.tolist(),
