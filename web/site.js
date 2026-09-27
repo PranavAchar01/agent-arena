@@ -555,7 +555,7 @@
       let list = qs.get("preload")?.split(",");
       if (!list) {  // the newest finished workout run (else the block-and-bowl run), then the chess run
         const runs = await fetch("/api/runs").then((r) => r.json()).catch(() => ({ runs: [] }));
-        const w = runs.runs.filter((r) => r.id.startsWith("workout-")).map((r) => r.id).sort().pop();
+        const w = runs.runs.filter((r) => r.id.startsWith("workout-")).sort((a, b) => a.finished - b.finished).map((r) => r.id).pop();
         list = ["chess:chess-140740-0d00", w || "box-place"];
       }
       for (const item of list) {

@@ -85,6 +85,7 @@ def runs():
         out.append(
             {
                 "id": d.parent.name,
+                "finished": round(d.stat().st_mtime),
                 "text": s.get("text"),
                 "family": s.get("plan", {}).get("family"),
                 "episodes": s.get("dataset", {}).get("episodes"),
